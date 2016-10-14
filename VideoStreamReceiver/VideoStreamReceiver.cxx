@@ -29,28 +29,34 @@
 #include "H264Decoder.h"
 
 
-int ReceiveVideoData(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header, ISVCDecoder* decoder_, const char* outputFileName);
+int ReceiveVideoData(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header, ISVCDecoder* decoder_, const char* outputFileName, bool useCompress);
 
 int main(int argc, char* argv[])
 {
   //------------------------------------------------------------
   // Parse Arguments
   
-  if (argc != 5) // check number of arguments
+  if (argc != 7) // check number of arguments
   {
     // If not correct, print usage
     std::cerr << "Usage: " << argv[0] << " <hostname> <port> <fps>"    << std::endl;
     std::cerr << "    <hostname> : IP or host name"                    << std::endl;
     std::cerr << "    <port>     : Port # (18944 in default)"   << std::endl;
+    std::cerr << "    <codecType> : codec type(currently only support H264."                    << std::endl;
     std::cerr << "    <fps>      : Frequency (fps) to send frame" << std::endl;
     std::cerr << "    <frameNum>      : Number of frame to be received" << std::endl;
+    std::cerr << "    <useCompress>      : Use compress or not " << std::endl;
+    
     exit(0);
   }
   
   char*  hostname = argv[1];
   int    port     = atoi(argv[2]);
-  double fps      = atof(argv[3]);
-  int frameNum      = atoi(argv[4]);
+  char*  codecType = argv[3];
+  double fps      = atof(argv[4]);
+  int frameNum      = atoi(argv[5]);
+  bool useCompress      = atoi(argv[6]);
+  
   int    interval = (int) (1000.0 / fps);
   
   ISVCDecoder* decoder_;
@@ -81,8 +87,9 @@ int main(int argc, char* argv[])
   igtl::StartVideoDataMessage::Pointer startVideoMsg;
   startVideoMsg = igtl::StartVideoDataMessage::New();
   startVideoMsg->SetDeviceName("Video Client");
+  startVideoMsg->SetCodecType(codecType);
   startVideoMsg->SetTimeInterval(interval);
-  startVideoMsg->SetUseCompress(interval);
+  startVideoMsg->SetUseCompress(useCompress);
   startVideoMsg->Pack();
   socket->Send(startVideoMsg->GetPackPointer(), startVideoMsg->GetPackSize());
   int loop = 0;
@@ -111,7 +118,7 @@ int main(int argc, char* argv[])
     headerMsg->Unpack();
     if (strcmp(headerMsg->GetDeviceName(), "Video") == 0)
     {
-      ReceiveVideoData(socket, headerMsg, decoder_, outputFileName.c_str());
+      ReceiveVideoData(socket, headerMsg, decoder_, outputFileName.c_str(), useCompress);
       if (++loop >= frameNum) // if received user define frame number
       {
         //------------------------------------------------------------
@@ -135,7 +142,7 @@ int main(int argc, char* argv[])
 }
 
 
-int ReceiveVideoData(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header, ISVCDecoder* decoder_, const char* outputFileName)
+int ReceiveVideoData(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header, ISVCDecoder* decoder_, const char* outputFileName, bool useCompress)
 {
   std::cerr << "Receiving Video data type." << std::endl;
   
@@ -156,10 +163,25 @@ int ReceiveVideoData(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::P
   
   if (igtl::MessageHeader::UNPACK_BODY)
   {
-    unsigned char* data[3];
-    memset (data, 0, sizeof (data));
     int32_t iWidth = videoMsg->GetWidth(), iHeight = videoMsg->GetHeight(), streamLength = videoMsg->GetPackBodySize()- IGTL_VIDEO_HEADER_SIZE;
-    H264DecodeInstance(decoder_, videoMsg->GetPackFragmentPointer(2), outputFileName, iWidth, iHeight, streamLength, NULL);
+    if (useCompress)
+    {
+      H264DecodeInstance(decoder_, videoMsg->GetPackFragmentPointer(2), outputFileName, iWidth, iHeight, streamLength, NULL);
+    }
+    else
+    {
+      std::cerr << "No using compression, data size in byte is: " << iWidth*iHeight*3/2  <<std::endl;
+      FILE* pYuvFile    = NULL;
+      pYuvFile = fopen (outputFileName, "ab");
+      unsigned char* pData[3];
+      int iStride[2] = {iWidth, iWidth/2};
+      pData[0] = videoMsg->GetPackFragmentPointer(2);
+      pData[1] = pData[0] + iWidth * iHeight;
+      pData[2] = pData[1] + iWidth * iHeight/4;
+      Write2File (pYuvFile, pData, iStride, iWidth, iHeight);
+      fclose (pYuvFile);
+      pYuvFile = NULL;
+    }
     return 1;
   }
   return 0;

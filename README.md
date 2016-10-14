@@ -58,7 +58,7 @@ Demonstration Instruction
   
  Then run the VideoStreamReceiver.exec in another terminal window, an example will be:
 
-    $  ./VideoStreamReceiver localhost  18944 10 100
+    $  ./VideoStreamReceiver localhost  18944 H264 10 100 1
 
 To see the explanation of the augments, just run the programs without any augments.
 The decoded output image with name "outputDecodedVideo.yuv" will be in the same directory as the VideoStreamReceiver.exec

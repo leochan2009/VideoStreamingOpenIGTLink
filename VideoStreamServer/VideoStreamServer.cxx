@@ -39,6 +39,8 @@ typedef struct {
   igtl::MutexLock::Pointer glock;
   igtl::Socket::Pointer socket;
   int   interval;
+  bool  useCompress;
+  char  codec[IGTL_VIDEO_CODEC_NAME_SIZE];
   int   stop;
   unsigned int width;
   unsigned int height;
@@ -139,14 +141,17 @@ int main(int argc, char* argv[])
           socket->Receive(startVideoMsg->GetPackBodyPointer(), startVideoMsg->GetPackBodySize());
           int c = startVideoMsg->Unpack(1);
           if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
-            {
+          {
               td.interval = startVideoMsg->GetTimeInterval();
+              td.useCompress = startVideoMsg->GetUseCompress();
+              strncpy(td.codec, startVideoMsg->GetCodecType().c_str(), IGTL_VIDEO_CODEC_NAME_SIZE);
               td.glock    = glock;
               td.socket   = socket;
               td.stop     = 0;
               td.width    = width;
               td.height    = height;
               threadID    = threader->SpawnThread((igtl::ThreadFunctionType) &ThreadFunction, &td);
+
             }
           }
         else if (strcmp(headerMsg->GetDeviceType(), "STP_VIDEO") == 0)
@@ -330,47 +335,60 @@ void* ThreadFunction(void* ptr)
       {
         pic.uiTimeStamp = (long long)(iFrameIdx * (1000 / pEncParamExt.fMaxFrameRate));
         iFrameIdx++;
-        int rv = encoder_->EncodeFrame (&pic, &info);
-        if(rv == cmResultSuccess)
+        igtl::VideoMessage::Pointer videoMsg;
+        videoMsg = igtl::VideoMessage::New();
+        videoMsg->SetDeviceName("Video");
+        if (td->useCompress)
         {
-          // 1. contain SHA encryption, could be removed, 2. contain the digest message could be as CRC
-          UpdateHashFromFrame (info, &ctx);
-          //---------------
-          igtl::VideoMessage::Pointer videoMsg;
-          videoMsg = igtl::VideoMessage::New();
-          videoMsg->SetDeviceName("Video");
-          videoMsg->SetBitStreamSize(info.iFrameSizeInBytes);
+          int rv = encoder_->EncodeFrame (&pic, &info);
+          if(rv == cmResultSuccess)
+          {
+            // 1. contain SHA encryption, could be removed, 2. contain the digest message could be as CRC
+            UpdateHashFromFrame (info, &ctx);
+            //---------------
+            videoMsg->SetBitStreamSize(info.iFrameSizeInBytes);
+            videoMsg->AllocateScalars();
+            videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
+            videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
+            videoMsg->SetWidth(pic.iPicWidth);
+            videoMsg->SetHeight(pic.iPicHeight);
+            int frameSize = 0;
+            int layerSize = 0;
+            for (int i = 0; i < info.iLayerNum; ++i) {
+              const SLayerBSInfo& layerInfo = info.sLayerInfo[i];
+              layerSize = 0;
+              for (int j = 0; j < layerInfo.iNalCount; ++j)
+              {
+                frameSize += layerInfo.pNalLengthInByte[j];
+                layerSize += layerInfo.pNalLengthInByte[j];
+              }
+              for (int i = 0; i < layerSize ; i++)
+              {
+                videoMsg->GetPackFragmentPointer(2)[frameSize-layerSize+i] = layerInfo.pBsBuf[i];
+              }
+              
+            }
+            videoMsg->Pack();
+          }
+        }
+        else
+        {
+          videoMsg->SetBitStreamSize(frameSize);
           videoMsg->AllocateScalars();
-          videoMsg->SetScalarType(videoMsg->TYPE_UINT32);
+          videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
           videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
           videoMsg->SetWidth(pic.iPicWidth);
           videoMsg->SetHeight(pic.iPicHeight);
-          int frameSize = 0;
-          int layerSize = 0;
-          for (int i = 0; i < info.iLayerNum; ++i) {
-            const SLayerBSInfo& layerInfo = info.sLayerInfo[i];
-            layerSize = 0;
-            for (int j = 0; j < layerInfo.iNalCount; ++j)
-            {
-              frameSize += layerInfo.pNalLengthInByte[j];
-              layerSize += layerInfo.pNalLengthInByte[j];
-            }
-            for (int i = 0; i < layerSize ; i++)
-            {
-              videoMsg->GetPackFragmentPointer(2)[frameSize-layerSize+i] = layerInfo.pBsBuf[i];
-            }
-            
-          }
+          videoMsg->m_Frame= buf;
           videoMsg->Pack();
-          glock->Lock();
-          
-          for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
-          {
-            socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
-          }
-          glock->Unlock();
-          igtl::Sleep(interval);
         }
+        glock->Lock();
+        for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
+        {
+          socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
+        }
+        glock->Unlock();
+        igtl::Sleep(interval);
       }
       free (buf);
       unsigned char digest[SHA_DIGEST_LENGTH];
