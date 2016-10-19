@@ -19,6 +19,8 @@ execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
                 WORKING_DIRECTORY "${PROJECT_BINARY_DIR}/OpenIGTLink-download" )
 execute_process(COMMAND "${CMAKE_COMMAND}" --build . 
                 WORKING_DIRECTORY "${PROJECT_BINARY_DIR}/OpenIGTLink-download" )                        
-                
+
+
+ADD_SUBDIRECTORY(VideoStreamOpenIGTLink)                
 ADD_SUBDIRECTORY(VideoStreamServer)
 ADD_SUBDIRECTORY(VideoStreamReceiver)

@@ -1,15 +1,4 @@
-#include <time.h>
-#if defined(_WIN32) /*&& defined(_DEBUG)*/
-  #include <windows.h>
-  #include <stdio.h>
-  #include <stdarg.h>
-  #include <sys/types.h>
-#else
-  #include <sys/time.h>
-#endif
-#include <vector>
-#define NO_DELAY_DECODING
-
+#include "H264Decoder.h"
 void Write2File (FILE* pFp, unsigned char* pData[3], int iStride[2], int iWidth, int iHeight) {
   int   i;
   unsigned char*  pPtr = NULL;

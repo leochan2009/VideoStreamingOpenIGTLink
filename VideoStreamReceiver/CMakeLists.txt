@@ -10,12 +10,26 @@ link_directories(${OpenIGTLink_LIBRARY_DIRS})
 #add_subdirectory(${CMAKE_BINARY_DIR}/Testing/OpenH264)
 include_directories("${CMAKE_BINARY_DIR}/OpenH264/codec")
 include_directories("${CMAKE_BINARY_DIR}/OpenH264/test")
-
+include_directories("${CMAKE_SOURCE_DIR}/VideoStreamOpenIGTLink")
 LINK_DIRECTORIES("${CMAKE_BINARY_DIR}/OpenH264")
 
 add_executable( VideoStreamReceiver VideoStreamReceiver.cxx)
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  target_link_libraries( VideoStreamReceiver OpenIGTLink ${CMAKE_BINARY_DIR}/OpenH264/OpenH264.lib)
+  FIND_LIBRARY( VideoStreamOpenIGTLinkLib VideoStreamOpenIGTLink.lib
+    ${CMAKE_BINARY_DIR}/VideoStreamOpenIGTLink/Release
+    ${CMAKE_BINARY_DIR}/VideoStreamOpenIGTLink/Debug
+  )
+  FIND_LIBRARY( OpenH264Lib OpenH264.lib
+    ${CMAKE_BINARY_DIR}/OpenH264
+  )
 else(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  target_link_libraries( VideoStreamReceiver OpenIGTLink ${CMAKE_BINARY_DIR}/OpenH264/libopenh264.a)
+  FIND_LIBRARY( VideoStreamOpenIGTLinkLib libVideoStreamOpenIGTLink.a
+    ${CMAKE_BINARY_DIR}/VideoStreamOpenIGTLink/Release
+    ${CMAKE_BINARY_DIR}/VideoStreamOpenIGTLink/Debug
+  )
+  FIND_LIBRARY( OpenH264Lib libOpenH264.a
+    ${CMAKE_BINARY_DIR}/OpenH264
+  )
 endif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+
+target_link_libraries( VideoStreamReceiver OpenIGTLink ${OpenH264Lib} ${VideoStreamOpenIGTLinkLib})
