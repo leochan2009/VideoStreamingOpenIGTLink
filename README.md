@@ -7,6 +7,10 @@ The project is consists of two sub-projects, a VideoStreamServer and a VideoStre
 Build Instruction
 -----------------
 
+NASM needed to be installed for assembly code: workable version 2.10.06 or above, nasm can downloaded from http://www.nasm.us/ For Mac OSX 64-bit NASM needed to be below version 2.11.08 as nasm 2.11.08 will introduce error when using RIP-relative addresses in Mac OSX 64-bit.
+If you have another NASM version installed, try to unlink the wrong version of NASM, and link to the version to below 2.11.08.
+After check the nasm version with comman "which nasm" and "nasm -v".
+
 ## Linux / Mac OS X
 First, obtain the source code from the repository using Git. To simply download the code, run the following command from a terminal:
 

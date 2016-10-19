@@ -86,7 +86,27 @@ int VideoStreamIGTLinkReceiver::Run()
     headerMsg->Unpack();
     if (strcmp(headerMsg->GetDeviceName(), "Video") == 0)
     {
-      this->ProcessVideoStream(socket, headerMsg);
+      //------------------------------------------------------------
+      // Allocate Video Message Class
+      
+      igtl::VideoMessage::Pointer videoMsg;
+      videoMsg = igtl::VideoMessage::New();
+      videoMsg->SetMessageHeader(headerMsg);
+      videoMsg->AllocatePack(headerMsg->GetBodySizeToRead());
+      
+      // Receive body from the socket
+      socket->Receive(videoMsg->GetPackBodyPointer(), videoMsg->GetPackBodySize());
+      
+      // Deserialize the transform data
+      // If you want to skip CRC check, call Unpack() without argument.
+      int c = videoMsg->Unpack(1);
+      
+      if ((c & igtl::MessageHeader::UNPACK_BODY) == 0) // if CRC check fails
+      {
+        // TODO: error handling
+        return 0;
+      }
+      this->ProcessVideoStream(videoMsg);
       loop++;
       if (loop>10)
       {
@@ -113,55 +133,36 @@ void VideoStreamIGTLinkReceiver::SendStopMessage()
   socket->Send(stopVideoMsg->GetPackPointer(), stopVideoMsg->GetPackSize());
 }
 
-int VideoStreamIGTLinkReceiver::ProcessVideoStream(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header)
+int VideoStreamIGTLinkReceiver::ProcessVideoStream(igtl::VideoMessage::Pointer& videoMsg)
 {
   std::cerr << "Receiving Video data type." << std::endl;
-  
-  //------------------------------------------------------------
-  // Allocate Video Message Class
-  
-  igtl::VideoMessage::Pointer videoMsg;
-  videoMsg = igtl::VideoMessage::New();
-  videoMsg->SetMessageHeader(header);
-  videoMsg->AllocatePack(header->GetBodySizeToRead());
-  
-  // Receive body from the socket
-  socket->Receive(videoMsg->GetPackBodyPointer(), videoMsg->GetPackBodySize());
-  
-  // Deserialize the transform data
-  // If you want to skip CRC check, call Unpack() without argument.
-  videoMsg->Unpack();
-  
-  if (igtl::MessageHeader::UNPACK_BODY)
+  int32_t iWidth = videoMsg->GetWidth(), iHeight = videoMsg->GetHeight(), streamLength = videoMsg->GetPackBodySize()- IGTL_VIDEO_HEADER_SIZE;
+  if (useCompress)
   {
-    int32_t iWidth = videoMsg->GetWidth(), iHeight = videoMsg->GetHeight(), streamLength = videoMsg->GetPackBodySize()- IGTL_VIDEO_HEADER_SIZE;
-    if (useCompress)
+    this->decodedFrame[0] = NULL;
+    this->decodedFrame[1] = NULL;
+    this->decodedFrame[2] = NULL;
+    H264DecodeInstance(this->pSVCDecoder, videoMsg->GetPackFragmentPointer(2), this->decodedFrame, kpOuputFileName, iWidth, iHeight, streamLength, pOptionFileName);
+    if (this->decodedFrame[0])
     {
-      this->decodedFrame[0] = NULL;
-      this->decodedFrame[1] = NULL;
-      this->decodedFrame[2] = NULL;
-      H264DecodeInstance(this->pSVCDecoder, videoMsg->GetPackFragmentPointer(2), this->decodedFrame, kpOuputFileName, iWidth, iHeight, streamLength, pOptionFileName);
-      if (this->decodedFrame[0])
-      {
-        return 1;
-      }
-      return 0;
-    }
-    else
-    {
-      std::cerr << "No using compression, data size in byte is: " << iWidth*iHeight*3/2  <<std::endl;
-      FILE* pYuvFile    = NULL;
-      pYuvFile = fopen (kpOuputFileName, "ab");
-      unsigned char* pData[3];
-      int iStride[2] = {iWidth, iWidth/2};
-      pData[0] = videoMsg->GetPackFragmentPointer(2);
-      pData[1] = pData[0] + iWidth * iHeight;
-      pData[2] = pData[1] + iWidth * iHeight/4;
-      Write2File (pYuvFile, pData, iStride, iWidth, iHeight);
-      fclose (pYuvFile);
-      pYuvFile = NULL;
       return 1;
     }
+    return 0;
+  }
+  else
+  {
+    std::cerr << "No using compression, data size in byte is: " << iWidth*iHeight*3/2  <<std::endl;
+    FILE* pYuvFile    = NULL;
+    pYuvFile = fopen (kpOuputFileName, "ab");
+    unsigned char* pData[3];
+    int iStride[2] = {iWidth, iWidth/2};
+    pData[0] = videoMsg->GetPackFragmentPointer(2);
+    pData[1] = pData[0] + iWidth * iHeight;
+    pData[2] = pData[1] + iWidth * iHeight/4;
+    Write2File (pYuvFile, pData, iStride, iWidth, iHeight);
+    fclose (pYuvFile);
+    pYuvFile = NULL;
+    return 1;
   }
   return 0;
 }

@@ -32,7 +32,7 @@ public:
   VideoStreamIGTLinkReceiver();
   ~VideoStreamIGTLinkReceiver(){};
   
-  int ProcessVideoStream(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header);
+  int ProcessVideoStream(igtl::VideoMessage::Pointer& videoMsg);
   
   void SendStopMessage();
   

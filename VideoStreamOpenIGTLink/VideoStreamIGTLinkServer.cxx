@@ -88,81 +88,85 @@ int VideoStreamIGTLinkServer::StartServer ()
       std::cerr << "A client is connected." << std::endl;
       
       // Create a message buffer to receive header
-      igtl::MessageHeader::Pointer headerMsg;
-      headerMsg = igtl::MessageHeader::New();
-      //------------------------------------------------------------
-      // loop
-      for (;;)
+      threadID    = threader->SpawnThread((igtl::ThreadFunctionType)(&ThreadFunction), this);
+      if (0)
       {
-        // Initialize receive buffer
-        headerMsg->InitPack();
-        
-        // Receive generic header from the socket
-        int rs = socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
-        if (rs == 0)
+        igtl::MessageHeader::Pointer headerMsg;
+        headerMsg = igtl::MessageHeader::New();
+        //------------------------------------------------------------
+        // loop
+        for (;;)
         {
-          if (threadID >= 0)
-          {
-            this->stop = 1;
-            threader->TerminateThread(threadID);
-            threadID = -1;
-          }
-          std::cerr << "Disconnecting the client." << std::endl;
-          this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
-          this->socket->CloseSocket();
-          break;
-        }
-        if (rs != headerMsg->GetPackSize())
-        {
-          continue;
-        }
-        
-        // Deserialize the header
-        headerMsg->Unpack();
-        
-        // Check data type and receive data body
-        if (strcmp(headerMsg->GetDeviceType(), "STT_VIDEO") == 0)
-        {
-          std::cerr << "Received a STT_VIDEO message." << std::endl;
+          // Initialize receive buffer
+          headerMsg->InitPack();
           
-          igtl::StartVideoDataMessage::Pointer startVideoMsg;
-          startVideoMsg = igtl::StartVideoDataMessage::New();
-          startVideoMsg->SetMessageHeader(headerMsg);
-          startVideoMsg->AllocatePack();
-          
-          socket->Receive(startVideoMsg->GetPackBodyPointer(), startVideoMsg->GetPackBodySize());
-          int c = startVideoMsg->Unpack(1);
-          if (c & igtl::MessageHeader::UNPACK_BODY && strcmp(startVideoMsg->GetCodecType().c_str(), "H264")) // if CRC check is OK
+          // Receive generic header from the socket
+          int rs = socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
+          if (rs == 0)
           {
-            this->interval = startVideoMsg->GetTimeInterval();
-            this->useCompress = startVideoMsg->GetUseCompress();
-            strncpy(this->codecName, startVideoMsg->GetCodecType().c_str(), IGTL_VIDEO_CODEC_NAME_SIZE);
-            this->glock    = glock;
-            this->socket   = socket;
-            this->stop     = 0;
-            threadID    = threader->SpawnThread((igtl::ThreadFunctionType)(&ThreadFunction), this);
-          }
-        }
-        else if (strcmp(headerMsg->GetDeviceType(), "STP_VIDEO") == 0)
-        {
-          socket->Skip(headerMsg->GetBodySizeToRead(), 0);
-          std::cerr << "Received a STP_VIDEO message." << std::endl;
-          if (threadID >= 0)
-          {
-            this->stop  = 1;
-            threader->TerminateThread(threadID);
-            threadID = -1;
+            if (threadID >= 0)
+            {
+              this->stop = 1;
+              threader->TerminateThread(threadID);
+              threadID = -1;
+            }
             std::cerr << "Disconnecting the client." << std::endl;
-            this->socket->CloseSocket();
             this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
-           
+            this->socket->CloseSocket();
+            break;
           }
-          break;
-        }
-        else
-        {
-          std::cerr << "Receiving : " << headerMsg->GetDeviceType() << std::endl;
-          this->socket->Skip(headerMsg->GetBodySizeToRead(), 0);
+          if (rs != headerMsg->GetPackSize())
+          {
+            continue;
+          }
+          
+          // Deserialize the header
+          headerMsg->Unpack();
+          
+          // Check data type and receive data body
+          if (strcmp(headerMsg->GetDeviceType(), "STT_VIDEO") == 0)
+          {
+            std::cerr << "Received a STT_VIDEO message." << std::endl;
+            
+            igtl::StartVideoDataMessage::Pointer startVideoMsg;
+            startVideoMsg = igtl::StartVideoDataMessage::New();
+            startVideoMsg->SetMessageHeader(headerMsg);
+            startVideoMsg->AllocatePack();
+            
+            socket->Receive(startVideoMsg->GetPackBodyPointer(), startVideoMsg->GetPackBodySize());
+            int c = startVideoMsg->Unpack(1);
+            if (c & igtl::MessageHeader::UNPACK_BODY && strcmp(startVideoMsg->GetCodecType().c_str(), "H264")) // if CRC check is OK
+            {
+              this->interval = startVideoMsg->GetTimeInterval();
+              this->useCompress = startVideoMsg->GetUseCompress();
+              strncpy(this->codecName, startVideoMsg->GetCodecType().c_str(), IGTL_VIDEO_CODEC_NAME_SIZE);
+              this->glock    = glock;
+              this->socket   = socket;
+              this->stop     = 0;
+              threadID    = threader->SpawnThread((igtl::ThreadFunctionType)(&ThreadFunction), this);
+            }
+          }
+          else if (strcmp(headerMsg->GetDeviceType(), "STP_VIDEO") == 0)
+          {
+            socket->Skip(headerMsg->GetBodySizeToRead(), 0);
+            std::cerr << "Received a STP_VIDEO message." << std::endl;
+            if (threadID >= 0)
+            {
+              this->stop  = 1;
+              threader->TerminateThread(threadID);
+              threadID = -1;
+              std::cerr << "Disconnecting the client." << std::endl;
+              this->socket->CloseSocket();
+              this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
+             
+            }
+            break;
+          }
+          else
+          {
+            std::cerr << "Receiving : " << headerMsg->GetDeviceType() << std::endl;
+            this->socket->Skip(headerMsg->GetBodySizeToRead(), 0);
+          }
         }
       }
     }
