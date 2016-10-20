@@ -86,7 +86,7 @@ int VideoStreamIGTLinkReceiver::Run()
     headerMsg->Unpack();
     if (strcmp(headerMsg->GetDeviceName(), "Video") == 0)
     {
-      this->ReceiveVideoData(socket, headerMsg);
+      this->ProcessVideoStream(socket, headerMsg);
       loop++;
       if (loop>10)
       {
@@ -113,7 +113,7 @@ void VideoStreamIGTLinkReceiver::SendStopMessage()
   socket->Send(stopVideoMsg->GetPackPointer(), stopVideoMsg->GetPackSize());
 }
 
-int VideoStreamIGTLinkReceiver::ReceiveVideoData(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header)
+int VideoStreamIGTLinkReceiver::ProcessVideoStream(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header)
 {
   std::cerr << "Receiving Video data type." << std::endl;
   
@@ -137,8 +137,15 @@ int VideoStreamIGTLinkReceiver::ReceiveVideoData(igtl::ClientSocket::Pointer& so
     int32_t iWidth = videoMsg->GetWidth(), iHeight = videoMsg->GetHeight(), streamLength = videoMsg->GetPackBodySize()- IGTL_VIDEO_HEADER_SIZE;
     if (useCompress)
     {
-      
-      H264DecodeInstance(this->pSVCDecoder, videoMsg->GetPackFragmentPointer(2), kpOuputFileName, iWidth, iHeight, streamLength, pOptionFileName);
+      this->decodedFrame[0] = NULL;
+      this->decodedFrame[1] = NULL;
+      this->decodedFrame[2] = NULL;
+      H264DecodeInstance(this->pSVCDecoder, videoMsg->GetPackFragmentPointer(2), this->decodedFrame, kpOuputFileName, iWidth, iHeight, streamLength, pOptionFileName);
+      if (this->decodedFrame[0])
+      {
+        return 1;
+      }
+      return 0;
     }
     else
     {
@@ -153,8 +160,8 @@ int VideoStreamIGTLinkReceiver::ReceiveVideoData(igtl::ClientSocket::Pointer& so
       Write2File (pYuvFile, pData, iStride, iWidth, iHeight);
       fclose (pYuvFile);
       pYuvFile = NULL;
+      return 1;
     }
-    return 1;
   }
   return 0;
 }

@@ -32,13 +32,15 @@ public:
   VideoStreamIGTLinkReceiver();
   ~VideoStreamIGTLinkReceiver(){};
   
-  int ReceiveVideoData(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header);
+  int ProcessVideoStream(igtl::ClientSocket::Pointer& socket, igtl::MessageHeader::Pointer& header);
   
   void SendStopMessage();
   
   ISVCDecoder*  pSVCDecoder;
   
   SDecodingParam decParam;
+  
+  unsigned char* decodedFrame[3];
   
   char* kpOuputFileName;
   

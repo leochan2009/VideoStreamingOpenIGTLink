@@ -58,7 +58,7 @@ int64_t getCurrentTime()
 
 int32_t iFrameCountTotal = 0;
 
-void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, const char* kpOuputFileName,
+void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, unsigned char* pDst[], const char* kpOuputFileName,
                          int32_t& iWidth, int32_t& iHeight, int32_t& iStreamSize, const char* pOptionFileName) {
   
   
@@ -70,7 +70,7 @@ void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, 
   unsigned char uiStartCode[4] = {0, 0, 0, 1};
   
   unsigned char* pData[3] = {NULL};
-  unsigned char* pDst[3] = {NULL};
+  //unsigned char* pDst[3] = {NULL};
   SBufferInfo sDstBufInfo;
   
   int32_t iBufPos = 0;

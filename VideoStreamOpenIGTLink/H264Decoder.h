@@ -20,5 +20,5 @@ void Write2File (FILE* pFp, unsigned char* pData[3], int iStride[2], int iWidth,
 
 int Process (void* pDst[3], SBufferInfo* pInfo, FILE* pFp);
 
-void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, const char* kpOuputFileName,
+void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, unsigned char* pDst[], const char* kpOuputFileName,
                          int32_t& iWidth, int32_t& iHeight, int32_t& iStreamSize, const char* pOptionFileName);

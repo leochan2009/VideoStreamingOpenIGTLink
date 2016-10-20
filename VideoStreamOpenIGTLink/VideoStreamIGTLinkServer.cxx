@@ -43,29 +43,18 @@ int VideoStreamIGTLinkServer::Run()
   if (argc < 2) {
     goto exit;
   } else {
-    if (!strstr (this->augments.c_str(), ".cfg")) { // check configuration type (like .cfg?)
-      if (argc > 2) {
-        this->bConfigFile = false;
+    if (strstr (this->augments.c_str(), ".cfg")) { // check configuration type (like .cfg?)
+      if (argc == 2) {
+        this->bConfigFile = true;
         iRet = StartServer();
-        if (iRet != 0)
+        if (iRet > 0)
           goto exit;
-      } else if (this->argc == 2 && ! strcmp (this->augments.c_str(), "-h"))
-        PrintHelp();
-      else {
-        cout << "You specified pCommand is invalid!!" << endl;
-        goto exit;
       }
-    } else {
-      this->bConfigFile = true;
-      iRet = StartServer();
-      if (iRet > 0)
-        goto exit;
     }
   }
   DestroySVCEncHandle (this->pSVCEncoder);
 exit:
   DestroySVCEncHandle (this->pSVCEncoder);
-  PrintHelp();
   this->stop = true;
   return 1;
 }
@@ -143,7 +132,7 @@ int VideoStreamIGTLinkServer::StartServer ()
           
           socket->Receive(startVideoMsg->GetPackBodyPointer(), startVideoMsg->GetPackBodySize());
           int c = startVideoMsg->Unpack(1);
-          if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
+          if (c & igtl::MessageHeader::UNPACK_BODY && strcmp(startVideoMsg->GetCodecType().c_str(), "H264")) // if CRC check is OK
           {
             this->interval = startVideoMsg->GetTimeInterval();
             this->useCompress = startVideoMsg->GetUseCompress();
@@ -220,44 +209,33 @@ void SendIGTLinkMessage(VideoStreamIGTLinkServer * td, SSourcePicture* pic, SFra
   {
     int frameSize = 0;
     int iLayer = 0;
-    while (iLayer < info->iLayerNum) {
-      SLayerBSInfo* pLayerBsInfo = &info->sLayerInfo[iLayer];
-      if (pLayerBsInfo != NULL) {
-        int iLayerSize = 0;
-        int iNalIdx = pLayerBsInfo->iNalCount - 1;
-        do {
-          iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
-          -- iNalIdx;
-        } while (iNalIdx >= 0);
-        ++ iLayer;
-        frameSize += iLayerSize;
-      }
-    }
-    videoMsg->SetBitStreamSize(frameSize);
-    videoMsg->AllocateScalars();
-    videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
-    videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
-    videoMsg->SetWidth(pic->iPicWidth);
-    videoMsg->SetHeight(pic->iPicHeight);
-    while (iLayer < info->iLayerNum) {
-      SLayerBSInfo* pLayerBsInfo = &info->sLayerInfo[iLayer];
-      if (pLayerBsInfo != NULL) {
-        int iLayerSize = 0;
-        int iNalIdx = pLayerBsInfo->iNalCount - 1;
-        do {
-          iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
-          -- iNalIdx;
-        } while (iNalIdx >= 0);
-        ++ iLayer;
-        frameSize += iLayerSize;
-        for (int i = 0; i < iLayerSize ; i++)
-        {
-          videoMsg->GetPackFragmentPointer(2)[frameSize-iLayerSize+i] = pLayerBsInfo->pBsBuf[i];
+    if (info->iFrameSizeInBytes > 0)
+    {
+      videoMsg->SetBitStreamSize(info->iFrameSizeInBytes);
+      videoMsg->AllocateScalars();
+      videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
+      videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
+      videoMsg->SetWidth(pic->iPicWidth);
+      videoMsg->SetHeight(pic->iPicHeight);
+      while (iLayer < info->iLayerNum) {
+        SLayerBSInfo* pLayerBsInfo = &info->sLayerInfo[iLayer];
+        if (pLayerBsInfo != NULL) {
+          int iLayerSize = 0;
+          int iNalIdx = pLayerBsInfo->iNalCount - 1;
+          do {
+            iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
+            -- iNalIdx;
+          } while (iNalIdx >= 0);
+          frameSize += iLayerSize;
+          for (int i = 0; i < iLayerSize ; i++)
+          {
+            videoMsg->GetPackFragmentPointer(2)[frameSize-iLayerSize+i] = pLayerBsInfo->pBsBuf[i];
+          }
         }
+        ++ iLayer;
       }
-      ++ iLayer;
+      videoMsg->Pack();
     }
-    videoMsg->Pack();
   }
   else
   {
@@ -459,8 +437,7 @@ void* ThreadFunction(void* ptr)
   }
   
   iFrameIdx = 0;
-  
-  
+
   while (iFrameIdx < iTotalFrameMax && (((int32_t)fs.uiFrameToBeCoded <= 0)
                                         || (iFrameIdx < (int32_t)fs.uiFrameToBeCoded))) {
     
@@ -478,7 +455,6 @@ void* ThreadFunction(void* ptr)
     // To encoder this frame
     iStart = WelsTime();
     pSrcPic->uiTimeStamp = WELS_ROUND (iFrameIdx * (1000 / sSvcParam.fMaxFrameRate));
-    sFbi.iLayerNum = 2;
     int iEncFrames = td->pSVCEncoder->EncodeFrame (pSrcPic, &sFbi);
     iTotal += WelsTime() - iStart;
     ++ iFrameIdx;
@@ -488,41 +464,6 @@ void* ThreadFunction(void* ptr)
     
     if (iEncFrames == cmResultSuccess) {
       SendIGTLinkMessage(td, pSrcPic, &sFbi);
-      /*while (iLayer < sFbi.iLayerNum) {
-        SLayerBSInfo* pLayerBsInfo = &sFbi.sLayerInfo[iLayer];
-        if (pLayerBsInfo != NULL) {
-          int iLayerSize = 0;
-          int iNalIdx = pLayerBsInfo->iNalCount - 1;
-          do {
-            iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
-            -- iNalIdx;
-          } while (iNalIdx >= 0);
-#if defined(COMPARE_DATA)
-          //Comparing the result of encoder with golden pData
-          {
-            unsigned char* pUCArry = new unsigned char [iLayerSize];
-            
-            fread (pUCArry, 1, iLayerSize, fpGolden);
-            
-            for (int w = 0; w < iLayerSize; w++) {
-              if (pUCArry[w] != pLayerBsInfo->pBsBuf[w]) {
-                fprintf (stderr, "error @frame%d/layer%d/byte%d!!!!!!!!!!!!!!!!!!!!!!!!\n", iFrameIdx, iLayer, w);
-                //fprintf(stderr, "%x - %x\n", pUCArry[w], pLayerBsInfo->pBsBuf[w]);
-                break;
-              }
-            }
-            fprintf (stderr, "frame%d/layer%d comparation completed!\n", iFrameIdx, iLayer);
-            
-            delete [] pUCArry;
-          }
-#endif
-          fwrite (pLayerBsInfo->pBsBuf, 1, iLayerSize, pFpBs); // write pure bit stream into file
-          iFrameSize += iLayerSize;
-        }
-        ++ iLayer;
-      }*/
-      
-      
 #if defined (STICK_STREAM_SIZE)
       if (fTrackStream) {
         fwrite (&iFrameSize, 1, sizeof (int), fTrackStream);

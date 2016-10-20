@@ -118,3 +118,6 @@ void LockToSingleCore();
 int32_t CreateSVCEncHandle (ISVCEncoder** ppEncoder);
 
 void DestroySVCEncHandle (ISVCEncoder* pEncoder);
+
+int ProcessEncoding (ISVCEncoder* pPtrEnc, int argc, char** argv, bool bConfigFile);
+
