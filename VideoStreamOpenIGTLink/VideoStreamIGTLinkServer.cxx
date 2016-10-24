@@ -12,6 +12,19 @@
 =========================================================================*/
 
 #include "VideoStreamIGTLinkServer.h"
+#include "welsencUtil.cpp"
+
+void UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx) {
+ for (int i = 0; i < info.iLayerNum; ++i) {
+ const SLayerBSInfo& layerInfo = info.sLayerInfo[i];
+ int layerSize = 0;
+ for (int j = 0; j < layerInfo.iNalCount; ++j) {
+ layerSize += layerInfo.pNalLengthInByte[j];
+ }
+ SHA1Input (ctx, layerInfo.pBsBuf, layerSize);
+ }
+}
+
 
 VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
 {
@@ -29,7 +42,8 @@ VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
   /* Control-C handler */
   signal (SIGINT, SigIntHandler);
   
-  iRet = CreateSVCEncHandle (&this->pSVCEncoder);
+  
+  iRet = CreateSVCEncHandle(&(this->pSVCEncoder));
   if (iRet) {
     this->stop = true;
   }
@@ -189,18 +203,6 @@ bool VideoStreamIGTLinkServer::CompareHash (const unsigned char* digest, const c
   }
   return false;
 }
-
-void VideoStreamIGTLinkServer::UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx) {
-  for (int i = 0; i < info.iLayerNum; ++i) {
-    const SLayerBSInfo& layerInfo = info.sLayerInfo[i];
-    int layerSize = 0;
-    for (int j = 0; j < layerInfo.iNalCount; ++j) {
-      layerSize += layerInfo.pNalLengthInByte[j];
-    }
-    SHA1Input (ctx, layerInfo.pBsBuf, layerSize);
-  }
-}
-
 
 
 void SendIGTLinkMessage(VideoStreamIGTLinkServer * td, SSourcePicture* pic, SFrameBSInfo* info)

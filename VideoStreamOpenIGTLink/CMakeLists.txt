@@ -14,6 +14,7 @@ include_directories("${PARENT_DIR}/OpenH264/codec/common/inc")
 include_directories("${PARENT_DIR}/OpenH264/codec/console/common/src")
 include_directories("${PARENT_DIR}/OpenH264/codec/console/common/inc")
 include_directories("${PARENT_DIR}/OpenH264/codec/console/dec/inc")
+include_directories("${PARENT_DIR}/OpenH264/codec/console/enc/src")
 include_directories("${PARENT_DIR}/OpenH264/codec/api/svc")
 include_directories("${PARENT_DIR}/OpenH264/codec/encoder/core/inc")
 include_directories("${PARENT_DIR}/OpenH264/codec/processing/interface")
@@ -21,8 +22,8 @@ include_directories("${PARENT_DIR}/OpenH264/test")
 
 LINK_DIRECTORIES("${PARENT_DIR}/OpenH264")
 
-SET(VideoStreamOpenIGTLink_SOURCES VideoStreamIGTLinkServer.cxx VideoStreamIGTLinkReceiver.cxx welsenc.cpp ${PARENT_DIR}/OpenH264/test/api/sha1.c H264Decoder.cpp ${PARENT_DIR}/OpenH264/codec/console/common/src/read_config.cpp)
-SET(VideoStreamOpenIGTLink_INCLUDES VideoStreamIGTLinkServer.h VideoStreamIGTLinkReceiver.h welsenc.h ${PARENT_DIR}/OpenH264/test/sha1.h H264Decoder.h ${PARENT_DIR}/OpenH264/codec/console/common/inc/read_config.h)
+SET(VideoStreamOpenIGTLink_SOURCES VideoStreamIGTLinkServer.cxx VideoStreamIGTLinkReceiver.cxx ${PARENT_DIR}/OpenH264/test/api/sha1.c H264Decoder.cpp ${PARENT_DIR}/OpenH264/codec/console/common/src/read_config.cpp)
+SET(VideoStreamOpenIGTLink_INCLUDES VideoStreamIGTLinkServer.h VideoStreamIGTLinkReceiver.h ${PARENT_DIR}/OpenH264/test/sha1.h H264Decoder.h ${PARENT_DIR}/OpenH264/codec/console/common/inc/read_config.h)
 
 add_library( VideoStreamOpenIGTLink ${VideoStreamOpenIGTLink_SOURCES} ${VideoStreamOpenIGTLink_INCLUDES})
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")

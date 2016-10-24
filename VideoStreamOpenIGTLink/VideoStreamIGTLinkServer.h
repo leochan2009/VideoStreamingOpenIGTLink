@@ -17,7 +17,6 @@
 #include "sha1.h"
 #include "igtl_header.h"
 #include "igtl_video.h"
-#include "welsenc.h"
 #include "igtlOSUtil.h"
 #include "igtlMessageHeader.h"
 #include "igtlVideoMessage.h"
@@ -27,6 +26,7 @@
 
 #define MaximuAugumentNum 30
 
+class ISVCEncoder;
 void* ThreadFunction(void* ptr);
 
 class VideoStreamIGTLinkServer
@@ -66,6 +66,4 @@ public:
   int Run();
   
   static bool CompareHash (const unsigned char* digest, const char* hashStr);
-
-  static void UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx);
 };
