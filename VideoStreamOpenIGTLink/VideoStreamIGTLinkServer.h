@@ -66,4 +66,6 @@ public:
   int Run();
   
   static bool CompareHash (const unsigned char* digest, const char* hashStr);
+  
+  bool waitSTTCommand;
 };

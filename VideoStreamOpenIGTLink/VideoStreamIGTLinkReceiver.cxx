@@ -99,9 +99,9 @@ int VideoStreamIGTLinkReceiver::Run()
       
       // Deserialize the transform data
       // If you want to skip CRC check, call Unpack() without argument.
-      int c = videoMsg->Unpack(1);
+      int c = videoMsg->Unpack();
       
-      if ((c & igtl::MessageHeader::UNPACK_BODY) == 0) // if CRC check fails
+      if (c==0) // if CRC check fails
       {
         // TODO: error handling
         return 0;

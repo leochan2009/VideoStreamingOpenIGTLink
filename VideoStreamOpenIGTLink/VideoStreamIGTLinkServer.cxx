@@ -94,19 +94,30 @@ int VideoStreamIGTLinkServer::StartServer ()
     //------------------------------------------------------------
     // Waiting for Connection
     int threadID = -1;
-
     socket = serverSocket->WaitForConnection(1000);
     
     if (socket.IsNotNull()) // if client connected
     {
       std::cerr << "A client is connected." << std::endl;
-      
-      // Create a message buffer to receive header
-      threadID    = threader->SpawnThread((igtl::ThreadFunctionType)(&ThreadFunction), this);
-      if (0)
+      igtl::MessageHeader::Pointer headerMsg;
+      headerMsg = igtl::MessageHeader::New();
+      if (!this->waitSTTCommand)
       {
-        igtl::MessageHeader::Pointer headerMsg;
-        headerMsg = igtl::MessageHeader::New();
+        // Create a message buffer to receive header
+        this->interval = 100;
+        this->useCompress = true;
+        strncpy(this->codecName, "H264", IGTL_VIDEO_CODEC_NAME_SIZE);
+        this->glock    = glock;
+        this->socket   = socket;
+        this->stop     = 0;
+        threadID    = threader->SpawnThread((igtl::ThreadFunctionType)(&ThreadFunction), this);
+        while (!this->stop)
+        {
+          igtl::Sleep(10);
+        }
+      }
+      else if (this->waitSTTCommand)
+      {
         //------------------------------------------------------------
         // loop
         for (;;)
@@ -138,7 +149,23 @@ int VideoStreamIGTLinkServer::StartServer ()
           headerMsg->Unpack();
           
           // Check data type and receive data body
-          if (strcmp(headerMsg->GetDeviceType(), "STT_VIDEO") == 0)
+          if (strcmp(headerMsg->GetDeviceType(), "STP_VIDEO") == 0)
+          {
+            socket->Skip(headerMsg->GetBodySizeToRead(), 0);
+            std::cerr << "Received a STP_VIDEO message." << std::endl;
+            if (threadID >= 0)
+            {
+              this->stop  = 1;
+              threader->TerminateThread(threadID);
+              threadID = -1;
+              std::cerr << "Disconnecting the client." << std::endl;
+              this->socket->CloseSocket();
+              this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
+              
+            }
+            break;
+          }
+          else if (strcmp(headerMsg->GetDeviceType(), "STT_VIDEO") == 0)
           {
             std::cerr << "Received a STT_VIDEO message." << std::endl;
             
@@ -159,22 +186,6 @@ int VideoStreamIGTLinkServer::StartServer ()
               this->stop     = 0;
               threadID    = threader->SpawnThread((igtl::ThreadFunctionType)(&ThreadFunction), this);
             }
-          }
-          else if (strcmp(headerMsg->GetDeviceType(), "STP_VIDEO") == 0)
-          {
-            socket->Skip(headerMsg->GetBodySizeToRead(), 0);
-            std::cerr << "Received a STP_VIDEO message." << std::endl;
-            if (threadID >= 0)
-            {
-              this->stop  = 1;
-              threader->TerminateThread(threadID);
-              threadID = -1;
-              std::cerr << "Disconnecting the client." << std::endl;
-              this->socket->CloseSocket();
-              this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
-             
-            }
-            break;
           }
           else
           {
