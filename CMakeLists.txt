@@ -22,5 +22,5 @@ execute_process(COMMAND "${CMAKE_COMMAND}" --build .
 
 
 ADD_SUBDIRECTORY(VideoStreamOpenIGTLink)                
-#ADD_SUBDIRECTORY(VideoStreamServer)
-#ADD_SUBDIRECTORY(VideoStreamReceiver)
+ADD_SUBDIRECTORY(VideoStreamServer)
+ADD_SUBDIRECTORY(VideoStreamReceiver)

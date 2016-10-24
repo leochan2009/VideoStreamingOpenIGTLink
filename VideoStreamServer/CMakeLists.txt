@@ -21,23 +21,13 @@ include_directories("${CMAKE_SOURCE_DIR}/VideoStreamOpenIGTLink")
 
 add_executable( VideoStreamServer VideoStreamServer.cxx)
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  FIND_LIBRARY( VideoStreamOpenIGTLinkLib VideoStreamOpenIGTLink.lib
-    ${PARENT_DIR}/VideoStreamOpenIGTLink/Release
-    ${PARENT_DIR}/VideoStreamOpenIGTLink/Debug
-    ${PARENT_DIR}/VideoStreamOpenIGTLink
-  )
   FIND_LIBRARY( OpenH264Lib OpenH264.lib
     ${PARENT_DIR}/OpenH264
   )
 else(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  FIND_LIBRARY( VideoStreamOpenIGTLinkLib libVideoStreamOpenIGTLink.a
-    ${PARENT_DIR}/VideoStreamOpenIGTLink/Release
-    ${PARENT_DIR}/VideoStreamOpenIGTLink/Debug
-    ${PARENT_DIR}/VideoStreamOpenIGTLink
-  )
   FIND_LIBRARY( OpenH264Lib libOpenH264.a
     ${PARENT_DIR}/OpenH264
   )
 endif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
 
-target_link_libraries( VideoStreamServer OpenIGTLink ${OpenH264Lib} ${VideoStreamOpenIGTLinkLib})
+target_link_libraries( VideoStreamServer OpenIGTLink ${OpenH264Lib} VideoStreamOpenIGTLink)
