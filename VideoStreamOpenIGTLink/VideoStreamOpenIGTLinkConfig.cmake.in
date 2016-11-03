@@ -1,0 +1,8 @@
+# The location of the UseOpenIGTLink.cmake file.
+# The VideoStreamOpenIGTLink include file directories.
+SET(VideoStreamOpenIGTLink_INCLUDE_DIRS "@VideoStreamOpenIGTLink_INCLUDE_DIRS_CONFIG@")
+# The VideoStreamOpenIGTLink library directories.
+SET(VideoStreamOpenIGTLink_LIBRARIES "@VideoStreamOpenIGTLink_LIBRARIES_CONFIG@")
+SET(VideoStreamOpenIGTLink_LIBRARY_DIRS "@VideoStreamOpenIGTLink_LIBRARY_DIRS_CONFIG@")
+
+SET(VideoStreamOpenIGTLink_USE_FILE "@VideoStreamOpenIGTLink_USE_FILE@")

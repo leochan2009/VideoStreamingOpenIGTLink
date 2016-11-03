@@ -1,0 +1,13 @@
+#
+# This file sets up include directories, link directories, and
+# compiler settings for a project to use VideoStreamOpenIGTLink.  It should not be
+# included directly, but rather through the VideoStreamOpenIGTLink_USE_FILE setting
+# obtained from VideoStreamOpenIGTLinkConfig.cmake.
+#
+
+
+# Add include directories needed to use VideoStreamOpenIGTLink.
+INCLUDE_DIRECTORIES(BEFORE ${VideoStreamOpenIGTLink_INCLUDE_DIRS})
+
+# Add link directories needed to use VideoStreamOpenIGTLink.
+LINK_DIRECTORIES(${VideoStreamOpenIGTLink_LIBRARY_DIRS})

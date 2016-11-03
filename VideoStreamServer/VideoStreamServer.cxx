@@ -20,7 +20,7 @@ int main (int argc, char** argv)
 #endif
 {
   VideoStreamIGTLinkServer server(argc, argv);
-  server.waitSTTCommand = true;
+  server.waitSTTCommand = false;
   server.Run();
   return 0;
 }
