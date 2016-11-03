@@ -14,11 +14,16 @@
 #include "api/svc/codec_app_def.h"
 
 #define NO_DELAY_DECODING
+class H264Decode
+{
+public: 
+  H264Decode();
+  void Write2File (FILE* pFp, unsigned char* pData[3], int iStride[2], int iWidth, int iHeight);
 
-void Write2File (FILE* pFp, unsigned char* pData[3], int iStride[2], int iWidth, int iHeight);
-
-
-int Process (void* pDst[3], SBufferInfo* pInfo, FILE* pFp);
-
-void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, unsigned char* pDst[], const char* kpOuputFileName,
-                         int32_t& iWidth, int32_t& iHeight, int32_t& iStreamSize, const char* pOptionFileName);
+  int Process (void* pDst[3], SBufferInfo* pInfo, FILE* pFp);
+  
+  void ComposeByteSteam(uint8_t** inputData, SBufferInfo bufInfo, uint8_t *outputByteStream,  int iWidth, int iHeight);
+  
+  void DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream,uint8_t* outputByteStream, const char* kpOuputFileName,
+                                            int32_t& iWidth, int32_t& iHeight, int32_t& iStreamSize, const char* pOptionFileName);
+};

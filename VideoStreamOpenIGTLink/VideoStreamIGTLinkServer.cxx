@@ -55,26 +55,28 @@ int VideoStreamIGTLinkServer::Run()
 {
   int iRet;
   if (argc < 2) {
-    goto exit;
+    return 0;
   } else {
     if (strstr (this->augments.c_str(), ".cfg")) { // check configuration type (like .cfg?)
       if (argc == 2) {
         this->bConfigFile = true;
         iRet = StartServer();
         if (iRet > 0)
-          goto exit;
+          return 0;
       }
     }
   }
-  DestroySVCEncHandle (this->pSVCEncoder);
-exit:
-  DestroySVCEncHandle (this->pSVCEncoder);
   this->stop = true;
   return 1;
 }
 
 int VideoStreamIGTLinkServer::StartServer ()
 {
+  if (this->serverSocket.IsNotNull())
+  {
+    this->serverSocket->CloseSocket();
+  }
+  this->serverSocket = NULL;
   this->serverSocket = igtl::ServerSocket::New();
   int port     = 18944; //atoi(this->augments[1]);
   int r = serverSocket->CreateServer(port);
@@ -115,6 +117,7 @@ int VideoStreamIGTLinkServer::StartServer ()
         {
           igtl::Sleep(10);
         }
+        break;
       }
       else if (this->waitSTTCommand)
       {
@@ -136,8 +139,6 @@ int VideoStreamIGTLinkServer::StartServer ()
               threadID = -1;
             }
             std::cerr << "Disconnecting the client." << std::endl;
-            this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
-            this->socket->CloseSocket();
             break;
           }
           if (rs != headerMsg->GetPackSize())
@@ -200,6 +201,14 @@ int VideoStreamIGTLinkServer::StartServer ()
   //------------------------------------------------------------
   // Close connection (The example code never reaches to this section ...)
   serverSocket->CloseSocket();
+  this->glock->Lock();
+  if (this->socket.IsNotNull())
+  {
+    this->socket->CloseSocket();
+  }
+  this->glock->Unlock();
+  this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
+  this->serverSocket = NULL;
 }
 
 bool VideoStreamIGTLinkServer::CompareHash (const unsigned char* digest, const char* hashStr) {

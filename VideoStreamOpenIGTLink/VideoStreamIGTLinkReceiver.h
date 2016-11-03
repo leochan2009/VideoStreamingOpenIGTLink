@@ -32,7 +32,7 @@ public:
   VideoStreamIGTLinkReceiver();
   ~VideoStreamIGTLinkReceiver(){};
   
-  int ProcessVideoStream(igtl::VideoMessage::Pointer& videoMsg);
+  int ProcessVideoStream(uint8_t* bitStream);
   
   void SendStopMessage();
   
@@ -40,7 +40,7 @@ public:
   
   SDecodingParam decParam;
   
-  unsigned char* decodedFrame[3];
+  unsigned char* decodedFrame;
   
   char* kpOuputFileName;
   
@@ -49,6 +49,8 @@ public:
   igtl::MutexLock::Pointer glock;
   
   igtl::ClientSocket::Pointer socket;
+  
+  uint8_t * videoMessageBuffer;
   
   int   interval;
   
@@ -64,5 +66,24 @@ public:
   
   std::string augments;
   
+  void SetWidth(int iWidth);
+  
+  void SetHeight(int iHeight);
+  
+  void SetStreamLength(int iStreamLength);
+  
+  void SetDecodedFrame();
+  
+  int Width;
+  
+  int Height;
+  
+  int StreamLength;
+  
   int Run();
+  
+  H264Decode* H264DecodeInstance;
+  
+  int YUV420ToRGBConversion(uint8_t *RGBFrame, uint8_t * YUV420Frame, int iHeight, int iWidth);
+
 };

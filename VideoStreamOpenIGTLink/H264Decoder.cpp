@@ -1,5 +1,9 @@
 #include "H264Decoder.h"
-void Write2File (FILE* pFp, unsigned char* pData[3], int iStride[2], int iWidth, int iHeight) {
+
+H264Decode::H264Decode()
+{}
+
+void H264Decode::Write2File (FILE* pFp, unsigned char* pData[3], int iStride[2], int iWidth, int iHeight) {
   int   i;
   unsigned char*  pPtr = NULL;
   
@@ -25,7 +29,7 @@ void Write2File (FILE* pFp, unsigned char* pData[3], int iStride[2], int iWidth,
 }
 
 
-int Process (void* pDst[3], SBufferInfo* pInfo, FILE* pFp) {
+int H264Decode::Process (void* pDst[3], SBufferInfo* pInfo, FILE* pFp) {
   
   int iRet = 0;
   
@@ -58,7 +62,42 @@ int64_t getCurrentTime()
 
 int32_t iFrameCountTotal = 0;
 
-void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, unsigned char* pDst[], const char* kpOuputFileName,
+
+
+void H264Decode::ComposeByteSteam(uint8_t** inputData, SBufferInfo bufInfo, uint8_t *outputByteStream,  int iWidth, int iHeight)
+{
+  int iStride [2] = {bufInfo.UsrData.sSystemBuffer.iStride[0],bufInfo.UsrData.sSystemBuffer.iStride[1]};
+#pragma omp parallel for default(none) shared(outputByteStream,inputData, iStride, iHeight, iWidth)
+  for (int i = 0; i < iHeight; i++)
+  {
+    uint8_t* pPtr = inputData[0]+i*iStride[0];
+    for (int j = 0; j < iWidth; j++)
+    {
+      outputByteStream[i*iWidth + j] = pPtr[j];
+    }
+  }
+#pragma omp parallel for default(none) shared(outputByteStream,inputData, iStride, iHeight, iWidth)
+  for (int i = 0; i < iHeight/2; i++)
+  {
+    uint8_t* pPtr = inputData[1]+i*iStride[1];
+    for (int j = 0; j < iWidth/2; j++)
+    {
+      outputByteStream[i*iWidth/2 + j + iHeight*iWidth] = pPtr[j];
+    }
+  }
+#pragma omp parallel for default(none) shared(outputByteStream, inputData, iStride, iHeight, iWidth)
+  for (int i = 0; i < iHeight/2; i++)
+  {
+    uint8_t* pPtr = inputData[2]+i*iStride[1];
+    for (int j = 0; j < iWidth/2; j++)
+    {
+      outputByteStream[i*iWidth/2 + j + iHeight*iWidth*5/4] = pPtr[j];
+    }
+  }
+  
+}
+
+void H264Decode::DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream,uint8_t* outputByteStream, const char* kpOuputFileName,
                          int32_t& iWidth, int32_t& iHeight, int32_t& iStreamSize, const char* pOptionFileName) {
   
   
@@ -90,7 +129,7 @@ void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, 
   FILE* pYuvFile    = NULL;
   FILE* pOptionFile = NULL;
   // Lenght input mode support
-  if (kpOuputFileName) {
+  /*if (kpOuputFileName) {
     pYuvFile = fopen (kpOuputFileName, "ab");
     if (pYuvFile == NULL) {
       fprintf (stderr, "Can not open yuv file to output result of decoding..\n");
@@ -109,17 +148,17 @@ void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, 
       fprintf (stderr, "Can not open optional file for write..\n");
     } else
       fprintf (stderr, "Extra optional file: %s..\n", pOptionFileName);
-  }
+  }*/
   
-  printf ("------------------------------------------------------\n");
+  //printf ("------------------------------------------------------\n");
   
   if (iStreamSize <= 0) {
-    fprintf (stderr, "Current Bit Stream File is too small, read error!!!!\n");
+    //fprintf (stderr, "Current Bit Stream File is too small, read error!!!!\n");
     goto label_exit;
   }
-  pBuf = new unsigned char[iStreamSize + 4];
+  pBuf = new unsigned char[iStreamSize + 5];
   if (pBuf == NULL) {
-    fprintf (stderr, "new buffer failed!\n");
+    //fprintf (stderr, "new buffer failed!\n");
     goto label_exit;
   }
   memcpy (pBuf, kpH264BitStream, iStreamSize);
@@ -144,23 +183,6 @@ void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, 
       continue;
     }
     
-    //for coverage test purpose
-    int32_t iEndOfStreamFlag;
-    pDecoder->GetOption (DECODER_OPTION_END_OF_STREAM, &iEndOfStreamFlag);
-    int32_t iCurIdrPicId;
-    pDecoder->GetOption (DECODER_OPTION_IDR_PIC_ID, &iCurIdrPicId);
-    int32_t iFrameNum;
-    pDecoder->GetOption (DECODER_OPTION_FRAME_NUM, &iFrameNum);
-    int32_t bCurAuContainLtrMarkSeFlag;
-    pDecoder->GetOption (DECODER_OPTION_LTR_MARKING_FLAG, &bCurAuContainLtrMarkSeFlag);
-    int32_t iFrameNumOfAuMarkedLtr;
-    pDecoder->GetOption (DECODER_OPTION_LTR_MARKED_FRAME_NUM, &iFrameNumOfAuMarkedLtr);
-    int32_t iFeedbackVclNalInAu;
-    pDecoder->GetOption (DECODER_OPTION_VCL_NAL, &iFeedbackVclNalInAu);
-    int32_t iFeedbackTidInAu;
-    pDecoder->GetOption (DECODER_OPTION_TEMPORAL_ID, &iFeedbackTidInAu);
-    //~end for
-    
     iStart = getCurrentTime();
     pData[0] = NULL;
     pData[1] = NULL;
@@ -175,15 +197,10 @@ void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, 
     pDecoder->DecodeFrame2 (pBuf + iBufPos, iSliceSize, pData, &sDstBufInfo);
 #endif
     
-    if (sDstBufInfo.iBufferStatus == 1) {
-      pDst[0] = pData[0];
-      pDst[1] = pData[1];
-      pDst[2] = pData[2];
-    }
     iEnd    = getCurrentTime();
     iTotal  = iEnd - iStart;
-    if (sDstBufInfo.iBufferStatus == 1) {
-      Process((void**)pDst, &sDstBufInfo, pYuvFile);
+    if (sDstBufInfo.iBufferStatus == 1)
+    {
       iWidth  = sDstBufInfo.UsrData.sSystemBuffer.iWidth;
       iHeight = sDstBufInfo.UsrData.sSystemBuffer.iHeight;
       
@@ -207,30 +224,13 @@ void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, 
     memset (&sDstBufInfo, 0, sizeof (SBufferInfo));
     sDstBufInfo.uiInBsTimeStamp = uiTimeStamp;
     pDecoder->DecodeFrame2 (NULL, 0, pData, &sDstBufInfo);
-    if (sDstBufInfo.iBufferStatus == 1) {
-      pDst[0] = pData[0];
-      pDst[1] = pData[1];
-      pDst[2] = pData[2];
-    }
     iEnd    = getCurrentTime();
     iTotal = iEnd - iStart;
     if (sDstBufInfo.iBufferStatus == 1) {
-      Process ((void**)pDst, &sDstBufInfo, pYuvFile);
+      ComposeByteSteam(pData, sDstBufInfo, outputByteStream, iWidth,iHeight);
       iWidth  = sDstBufInfo.UsrData.sSystemBuffer.iWidth;
       iHeight = sDstBufInfo.UsrData.sSystemBuffer.iHeight;
       std::vector<unsigned char> test(iWidth*iHeight*3/2,0);
-      for (int i =0; i< test.size()*2/3; i++)
-      {
-        test[i] = pDst[0][i];
-      }
-      for (int i =0; i< test.size()/6; i++)
-      {
-        test[i+test.size()*2/3] = pDst[1][i];
-      }
-      for (int i =0; i< test.size()/6; i++)
-      {
-        test[i+test.size()*5/6] = pDst[2][i];
-      }
       if (pOptionFile != NULL) {
         if (iWidth != iLastWidth && iHeight != iLastHeight) {
           fwrite (&iFrameCount, sizeof (iFrameCount), 1, pOptionFile);
@@ -246,10 +246,10 @@ void H264DecodeInstance (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream, 
     if (iFrameCount)
     {
       dElapsed = iTotal / 1e6;
-      fprintf (stderr, "-------------------------------------------------------\n");
-       fprintf (stderr, "iWidth:\t\t%d\nheight:\t\t%d\nFrames:\t\t%d\ndecode time:\t%f sec\nFPS:\t\t%f fps\n",
-       iWidth, iHeight, ++iFrameCountTotal, dElapsed, (iFrameCount * 1.0) / dElapsed);
-       fprintf (stderr, "-------------------------------------------------------\n");
+      //fprintf (stderr, "-------------------------------------------------------\n");
+       //fprintf (stderr, "iWidth:\t\t%d\nheight:\t\t%d\nFrames:\t\t%d\ndecode time:\t%f sec\nFPS:\t\t%f fps\n",
+       //iWidth, iHeight, ++iFrameCountTotal, dElapsed, (iFrameCount * 1.0) / dElapsed);
+       //fprintf (stderr, "-------------------------------------------------------\n");
     }
     iBufPos += iSliceSize;
     ++ iSliceIndex;

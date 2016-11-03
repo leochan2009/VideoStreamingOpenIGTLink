@@ -30,8 +30,13 @@ VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver()
   this->decParam.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_DEFAULT;
   this->pSVCDecoder->Initialize (&decParam);
   this->kpOuputFileName = (char*)"decodedOutput.yuv";
-  this->pOptionFileName = (char*)"";
+  this->pOptionFileName = NULL;
+  this->videoMessageBuffer=NULL;
+  this->decodedFrame=NULL;
   socket = igtl::ClientSocket::New();
+  this->Height = 0;
+  this->Width = 0;
+  this->H264DecodeInstance = new H264Decode();
 }
 
 int VideoStreamIGTLinkReceiver::Run()
@@ -106,7 +111,12 @@ int VideoStreamIGTLinkReceiver::Run()
         // TODO: error handling
         return 0;
       }
-      this->ProcessVideoStream(videoMsg);
+      this->SetWidth(videoMsg->GetWidth());
+      this->SetHeight(videoMsg->GetHeight());
+      this->SetStreamLength(videoMsg->GetBitStreamSize());
+      uint8_t* bitstream = new uint8_t[videoMsg->GetBitStreamSize()];
+      memcpy(bitstream, videoMsg->GetPackFragmentPointer(2), videoMsg->GetBitStreamSize());
+      this->ProcessVideoStream(bitstream);
       loop++;
       if (loop>10)
       {
@@ -133,17 +143,47 @@ void VideoStreamIGTLinkReceiver::SendStopMessage()
   socket->Send(stopVideoMsg->GetPackPointer(), stopVideoMsg->GetPackSize());
 }
 
-int VideoStreamIGTLinkReceiver::ProcessVideoStream(igtl::VideoMessage::Pointer& videoMsg)
+void VideoStreamIGTLinkReceiver::SetWidth(int iWidth)
 {
-  std::cerr << "Receiving Video data type." << std::endl;
-  int32_t iWidth = videoMsg->GetWidth(), iHeight = videoMsg->GetHeight(), streamLength = videoMsg->GetPackBodySize()- IGTL_VIDEO_HEADER_SIZE;
+  this->Width = iWidth;
+}
+
+void VideoStreamIGTLinkReceiver::SetHeight(int iHeight)
+{
+  this->Height = iHeight;
+}
+
+void VideoStreamIGTLinkReceiver::SetStreamLength(int iStreamLength)
+{
+  this->StreamLength = iStreamLength;
+}
+
+void VideoStreamIGTLinkReceiver::SetDecodedFrame()
+{
+  if (!(this->decodedFrame == NULL))
+  {
+    delete[] this->decodedFrame;
+  }
+  this->decodedFrame = NULL;
+  this->decodedFrame = new unsigned char[this->Width*this->Height*3];
+}
+
+int VideoStreamIGTLinkReceiver::ProcessVideoStream(uint8_t* bitStream)
+{
+  //std::cerr << "Receiving Video data type." << std::endl;
+  
+  if (!(this->videoMessageBuffer==NULL))
+  {
+    delete[] this->videoMessageBuffer;
+  }
+  this->videoMessageBuffer = new uint8_t[StreamLength];
+  memcpy(this->videoMessageBuffer, bitStream, StreamLength);// copy slow down the process, however, the videoMsg is a smart pointer, it gets deleted unpredictable.
+  
   if (useCompress)
   {
-    this->decodedFrame[0] = NULL;
-    this->decodedFrame[1] = NULL;
-    this->decodedFrame[2] = NULL;
-    H264DecodeInstance(this->pSVCDecoder, videoMsg->GetPackFragmentPointer(2), this->decodedFrame, kpOuputFileName, iWidth, iHeight, streamLength, pOptionFileName);
-    if (this->decodedFrame[0])
+    this->SetDecodedFrame();
+    H264DecodeInstance->DecodeSingleFrame(this->pSVCDecoder, videoMessageBuffer, this->decodedFrame, kpOuputFileName, Width, Height, StreamLength, pOptionFileName);
+    if (this->decodedFrame)
     {
       return 1;
     }
@@ -151,18 +191,89 @@ int VideoStreamIGTLinkReceiver::ProcessVideoStream(igtl::VideoMessage::Pointer& 
   }
   else
   {
-    std::cerr << "No using compression, data size in byte is: " << iWidth*iHeight*3/2  <<std::endl;
+    //std::cerr << "No using compression, data size in byte is: " << Width*Height*3/2  <<std::endl;
     FILE* pYuvFile    = NULL;
     pYuvFile = fopen (kpOuputFileName, "ab");
     unsigned char* pData[3];
-    int iStride[2] = {iWidth, iWidth/2};
-    pData[0] = videoMsg->GetPackFragmentPointer(2);
-    pData[1] = pData[0] + iWidth * iHeight;
-    pData[2] = pData[1] + iWidth * iHeight/4;
-    Write2File (pYuvFile, pData, iStride, iWidth, iHeight);
+    int iStride[2] = {Width, Width/2};
+    pData[0] = bitStream;
+    pData[1] = pData[0] + Width * Height;
+    pData[2] = pData[1] + Width * Height/4;
+    H264DecodeInstance->Write2File (pYuvFile, pData, iStride, Width, Height);
     fclose (pYuvFile);
     pYuvFile = NULL;
     return 1;
   }
   return 0;
 }
+
+
+int VideoStreamIGTLinkReceiver::YUV420ToRGBConversion(uint8_t *RGBFrame, uint8_t * YUV420Frame, int iHeight, int iWidth)
+{
+  int componentLength = iHeight*iWidth;
+  const uint8_t *srcY = YUV420Frame;
+  const uint8_t *srcU = YUV420Frame+componentLength;
+  const uint8_t *srcV = YUV420Frame+componentLength*5/4;
+  uint8_t * YUV444 = new uint8_t[componentLength * 3];
+  uint8_t *dstY = YUV444;
+  uint8_t *dstU = dstY + componentLength;
+  uint8_t *dstV = dstU + componentLength;
+  
+  memcpy(dstY, srcY, componentLength);
+  const int halfHeight = iHeight/2;
+  const int halfWidth = iWidth/2;
+  
+#pragma omp parallel for default(none) shared(dstV,dstU,srcV,srcU,iWidth)
+  for (int y = 0; y < halfHeight; y++) {
+    for (int x = 0; x < halfWidth; x++) {
+      dstU[2 * x + 2 * y*iWidth] = dstU[2 * x + 1 + 2 * y*iWidth] = srcU[x + y*iWidth/2];
+      dstV[2 * x + 2 * y*iWidth] = dstV[2 * x + 1 + 2 * y*iWidth] = srcV[x + y*iWidth/2];
+    }
+    memcpy(&dstU[(2 * y + 1)*iWidth], &dstU[(2 * y)*iWidth], iWidth);
+    memcpy(&dstV[(2 * y + 1)*iWidth], &dstV[(2 * y)*iWidth], iWidth);
+  }
+  
+  
+  const int yOffset = 16;
+  const int cZero = 128;
+  int yMult, rvMult, guMult, gvMult, buMult;
+  yMult =   76309;
+  rvMult = 117489;
+  guMult = -13975;
+  gvMult = -34925;
+  buMult = 138438;
+  
+  static unsigned char clp_buf[384+256+384];
+  static unsigned char *clip_buf = clp_buf+384;
+  
+  // initialize clipping table
+  memset(clp_buf, 0, 384);
+  
+  for (int i = 0; i < 256; i++) {
+    clp_buf[384+i] = i;
+  }
+  memset(clp_buf+384+256, 255, 384);
+  
+  
+#pragma omp parallel for default(none) shared(dstY,dstU,dstV,RGBFrame,yMult,rvMult,guMult,gvMult,buMult,clip_buf,componentLength)// num_threads(2)
+  for (int i = 0; i < componentLength; ++i) {
+    const int Y_tmp = ((int)dstY[i] - yOffset) * yMult;
+    const int U_tmp = (int)dstU[i] - cZero;
+    const int V_tmp = (int)dstV[i] - cZero;
+    
+    const int R_tmp = (Y_tmp                  + V_tmp * rvMult ) >> 16;//32 to 16 bit conversion by left shifting
+    const int G_tmp = (Y_tmp + U_tmp * guMult + V_tmp * gvMult ) >> 16;
+    const int B_tmp = (Y_tmp + U_tmp * buMult                  ) >> 16;
+    
+    RGBFrame[3*i]   = clip_buf[R_tmp];
+    RGBFrame[3*i+1] = clip_buf[G_tmp];
+    RGBFrame[3*i+2] = clip_buf[B_tmp];
+  }
+  delete [] YUV444;
+  YUV444 = NULL;
+  dstY = NULL;
+  dstU = NULL;
+  dstV = NULL;
+  return 1;
+}
+

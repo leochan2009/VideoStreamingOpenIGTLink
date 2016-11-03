@@ -20,7 +20,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     ${PARENT_DIR}/OpenH264
   )
 else(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  FIND_LIBRARY( OpenH264Lib libOpenH264.a
+  FIND_LIBRARY( OpenH264Lib libopenh264.a
     ${PARENT_DIR}/OpenH264
   )
 endif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
