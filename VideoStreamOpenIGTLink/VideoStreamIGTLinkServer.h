@@ -22,22 +22,48 @@
 #include "igtlVideoMessage.h"
 #include "igtlServerSocket.h"
 #include "igtlMultiThreader.h"
-
+#include "codec_def.h"
+#include "codec_app_def.h"
+#include "read_config.h"
+#include "wels_const.h"
 
 #define MaximuAugumentNum 30
 
-class ISVCEncoder;
-void* ThreadFunction(void* ptr);
+typedef struct LayerpEncCtx_s {
+  int32_t       iDLayerQp;
+  SSliceArgument  sSliceArgument;
+} SLayerPEncCtx;
 
+typedef struct tagFilesSet {
+  std::string strBsFile;
+  std::string strSeqFile;    // frame File to read
+  std::string strLayerCfgFile[MAX_DEPENDENCY_LAYER];
+  char   sRecFileName[MAX_DEPENDENCY_LAYER][MAX_FNAME_LEN];
+  uint32_t uiFrameToBeCoded;
+} SFilesSet;
+
+
+class ISVCEncoder;
+//void* ThreadFunction(void* ptr);
 class VideoStreamIGTLinkServer
 {
 public:
   VideoStreamIGTLinkServer(int argc, char *argv[]);
   ~VideoStreamIGTLinkServer(){};
   
-  int StartServer();
+  int StartServer(int portNum);
   
-  int   SendVideoData(igtl::Socket::Pointer& socket, igtl::VideoMessage::Pointer& videoMsg);
+  bool InitializeEncoder();
+  
+  void SetInputFramePointer(uint8_t* picPointer);
+  
+  int encodeSingleFrame();
+  
+  int SendVideoData(igtl::Socket::Pointer& socket, igtl::VideoMessage::Pointer& videoMsg);
+  
+  void SendIGTLinkMessage();
+  
+  void* ThreadFunction(void);
   
   ISVCEncoder*  pSVCEncoder;
   
@@ -66,6 +92,14 @@ public:
   int Run();
   
   static bool CompareHash (const unsigned char* digest, const char* hashStr);
-  
+
   bool waitSTTCommand;
+
+private:
+  SEncParamExt sSvcParam;
+  SFilesSet fs;
+  // for configuration file
+  CReadConfig cRdCfg;
+  SFrameBSInfo sFbi;
+  SSourcePicture* pSrcPic;
 };

@@ -12,7 +12,11 @@
 =========================================================================*/
 
 #include "VideoStreamIGTLinkServer.h"
+#include <thread>
 #include "welsencUtil.cpp"
+
+typedef  void* (VideoStreamIGTLinkServer::*Thread2Ptr)(void);
+typedef  void* (*PthreadPtr)(void*);
 
 void UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx) {
  for (int i = 0; i < info.iLayerNum; ++i) {
@@ -25,10 +29,11 @@ void UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx) {
  }
 }
 
-
 VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
 {
   this->pSVCEncoder = NULL;
+  memset (&sFbi, 0, sizeof (SFrameBSInfo));
+  pSrcPic = new SSourcePicture;
   int iRet = 0;
   
 #ifdef _MSC_VER
@@ -42,13 +47,10 @@ VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
   /* Control-C handler */
   signal (SIGINT, SigIntHandler);
   
-  
-  iRet = CreateSVCEncHandle(&(this->pSVCEncoder));
-  if (iRet) {
-    this->stop = true;
-  }
+  this->stop = true;
   this->argc = argc;
   this->augments = std::string(argv[1]);
+  this->waitSTTCommand = true;
 }
 
 int VideoStreamIGTLinkServer::Run()
@@ -60,7 +62,7 @@ int VideoStreamIGTLinkServer::Run()
     if (strstr (this->augments.c_str(), ".cfg")) { // check configuration type (like .cfg?)
       if (argc == 2) {
         this->bConfigFile = true;
-        iRet = StartServer();
+        iRet = StartServer(18944);
         if (iRet > 0)
           return 0;
       }
@@ -70,7 +72,7 @@ int VideoStreamIGTLinkServer::Run()
   return 1;
 }
 
-int VideoStreamIGTLinkServer::StartServer ()
+int VideoStreamIGTLinkServer::StartServer (int portNum)
 {
   if (this->serverSocket.IsNotNull())
   {
@@ -112,7 +114,12 @@ int VideoStreamIGTLinkServer::StartServer ()
         this->glock    = glock;
         this->socket   = socket;
         this->stop     = 0;
-        threadID    = threader->SpawnThread((igtl::ThreadFunctionType)(&ThreadFunction), this);
+        Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunction;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
+        PthreadPtr   p = *(PthreadPtr*)&t;
+        pthread_t    tid;
+        if (pthread_create(&tid, 0, p, this) == 0)
+          pthread_detach(tid);
+
         while (!this->stop)
         {
           igtl::Sleep(10);
@@ -185,7 +192,11 @@ int VideoStreamIGTLinkServer::StartServer ()
               this->glock    = glock;
               this->socket   = socket;
               this->stop     = 0;
-              threadID    = threader->SpawnThread((igtl::ThreadFunctionType)(&ThreadFunction), this);
+              Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunction;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
+              PthreadPtr   p = *(PthreadPtr*)&t;
+              pthread_t    tid;
+              if (pthread_create(&tid, 0, p, this) == 0)
+                pthread_detach(tid);
             }
           }
           else
@@ -209,6 +220,7 @@ int VideoStreamIGTLinkServer::StartServer ()
   this->glock->Unlock();
   this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
   this->serverSocket = NULL;
+  return true;
 }
 
 bool VideoStreamIGTLinkServer::CompareHash (const unsigned char* digest, const char* hashStr) {
@@ -224,94 +236,25 @@ bool VideoStreamIGTLinkServer::CompareHash (const unsigned char* digest, const c
   return false;
 }
 
-
-void SendIGTLinkMessage(VideoStreamIGTLinkServer * td, SSourcePicture* pic, SFrameBSInfo* info)
+bool VideoStreamIGTLinkServer::InitializeEncoder()
 {
-  igtl::VideoMessage::Pointer videoMsg;
-  videoMsg = igtl::VideoMessage::New();
-  videoMsg->SetDeviceName("Video");
-  int frameSize = pic->iPicWidth* pic->iPicHeight * 3 >> 1;
-  if (td->useCompress)
-  {
-    int frameSize = 0;
-    int iLayer = 0;
-    if (info->iFrameSizeInBytes > 0)
-    {
-      videoMsg->SetBitStreamSize(info->iFrameSizeInBytes);
-      videoMsg->AllocateScalars();
-      videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
-      videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
-      videoMsg->SetWidth(pic->iPicWidth);
-      videoMsg->SetHeight(pic->iPicHeight);
-      while (iLayer < info->iLayerNum) {
-        SLayerBSInfo* pLayerBsInfo = &info->sLayerInfo[iLayer];
-        if (pLayerBsInfo != NULL) {
-          int iLayerSize = 0;
-          int iNalIdx = pLayerBsInfo->iNalCount - 1;
-          do {
-            iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
-            -- iNalIdx;
-          } while (iNalIdx >= 0);
-          frameSize += iLayerSize;
-          for (int i = 0; i < iLayerSize ; i++)
-          {
-            videoMsg->GetPackFragmentPointer(2)[frameSize-iLayerSize+i] = pLayerBsInfo->pBsBuf[i];
-          }
-        }
-        ++ iLayer;
-      }
-      videoMsg->Pack();
-    }
+  //------------------------------------------------------------
+  int iRet = 0;
+  iRet = CreateSVCEncHandle(&(this->pSVCEncoder));
+  if (iRet) {
+    this->stop = true;
   }
   else
   {
-    videoMsg->SetBitStreamSize(frameSize);
-    videoMsg->AllocateScalars();
-    videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
-    videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
-    videoMsg->SetWidth(pic->iPicWidth);
-    videoMsg->SetHeight(pic->iPicHeight);
-    videoMsg->m_Frame= pic->pData[0];
-    videoMsg->Pack();
+    this->stop = false;
   }
-  td->glock->Lock();
-  for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
-  {
-    td->socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
-  }
-  td->glock->Unlock();
-  igtl::Sleep(td->interval);
-}
-
-void* ThreadFunction(void* ptr)
-{
+  if (this->pSVCEncoder == NULL)
+    this->stop = true;
   
-  //------------------------------------------------------------
-  // Get thread information
-  igtl::MultiThreader::ThreadInfo* info =
-  static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
-  
-  //int id      = info->ThreadID;
-  //int nThread = info->NumberOfThreads;
-  VideoStreamIGTLinkServer* td = static_cast<VideoStreamIGTLinkServer*>(info->UserData);
-
-  int iRet = 0;
-  
-  if (td->pSVCEncoder == NULL)
-    td->stop = true;
-  
-  SFrameBSInfo sFbi;
-  SEncParamExt sSvcParam;
-  int64_t iStart = 0, iTotal = 0;
+  int iTotalFrameMax;
   
   // Preparing encoding process
-  FILE* pFileYUV = NULL;
-  int32_t iActualFrameEncodedCount = 0;
-  int32_t iFrameIdx = 0;
-  int32_t iTotalFrameMax = -1;
-  uint8_t* pYUV = NULL;
-  SSourcePicture* pSrcPic = NULL;
-  uint32_t iSourceWidth, iSourceHeight, kiPicResSize;
+  
   // Inactive with sink with output file handler
   FILE* pFpBs = NULL;
 #if defined(COMPARE_DATA)
@@ -321,17 +264,11 @@ void* ThreadFunction(void* ptr)
 #if defined ( STICK_STREAM_SIZE )
   FILE* fTrackStream = fopen ("coding_size.stream", "wb");
 #endif
-  SFilesSet fs;
-  // for configuration file
-  CReadConfig cRdCfg;
   int iParsedNum = 1;
-  
-  memset (&sFbi, 0, sizeof (SFrameBSInfo));
-  td->pSVCEncoder->GetDefaultParams (&sSvcParam);
+  this->pSVCEncoder->GetDefaultParams (&sSvcParam);
   memset (&fs.sRecFileName[0][0], 0, sizeof (fs.sRecFileName));
   
   FillSpecificParameters (sSvcParam);
-  pSrcPic = new SSourcePicture;
   if (pSrcPic == NULL) {
     iRet = 1;
     goto INSIDE_MEM_FREE;
@@ -341,9 +278,9 @@ void* ThreadFunction(void* ptr)
   pSrcPic->uiTimeStamp = 0;
   
   // if configure file exit, reading configure file firstly
-  if (td->bConfigFile) {
+  if (this->bConfigFile) {
     iParsedNum = 2;
-    cRdCfg.Openf (td->augments.c_str());// to do get the first augments from td->augments.
+    cRdCfg.Openf (this->augments.c_str());// to do get the first augments from this->augments.
     if (!cRdCfg.ExistFile()) {
       fprintf (stderr, "Specified file: %s not exist, maybe invalid path or parameter settting.\n",
                cRdCfg.GetFileName().c_str());
@@ -357,30 +294,21 @@ void* ThreadFunction(void* ptr)
       goto INSIDE_MEM_FREE;
     }
   }
-  /*if (ParseCommandLine (td->argc - iParsedNum, td->augments + iParsedNum, pSrcPic, sSvcParam, fs) != 0) {
-    printf ("parse pCommand line failed\n");
-    iRet = 1;
+  else
+  {
     goto INSIDE_MEM_FREE;
-  }*/
-  td->pSVCEncoder->SetOption (ENCODER_OPTION_TRACE_LEVEL, &g_LevelSetting);
+  }
+  iTotalFrameMax = (int32_t)fs.uiFrameToBeCoded;
+  this->pSVCEncoder->SetOption (ENCODER_OPTION_TRACE_LEVEL, &g_LevelSetting);
   //finish reading the configurations
+  uint32_t iSourceWidth, iSourceHeight, kiPicResSize;
   iSourceWidth = pSrcPic->iPicWidth;
   iSourceHeight = pSrcPic->iPicHeight;
   kiPicResSize = iSourceWidth * iSourceHeight * 3 >> 1;
   
-  pYUV = new uint8_t [kiPicResSize];
-  if (pYUV == NULL) {
-    iRet = 1;
-    goto INSIDE_MEM_FREE;
-  }
-  
   //update pSrcPic
   pSrcPic->iStride[0] = iSourceWidth;
   pSrcPic->iStride[1] = pSrcPic->iStride[2] = pSrcPic->iStride[0] >> 1;
-  
-  pSrcPic->pData[0] = pYUV;
-  pSrcPic->pData[1] = pSrcPic->pData[0] + (iSourceWidth * iSourceHeight);
-  pSrcPic->pData[2] = pSrcPic->pData[1] + (iSourceWidth * iSourceHeight >> 2);
   
   //update sSvcParam
   sSvcParam.iPicWidth = 0;
@@ -394,9 +322,8 @@ void* ThreadFunction(void* ptr)
   sSvcParam.iPicWidth = (!sSvcParam.iPicWidth) ? iSourceWidth : sSvcParam.iPicWidth;
   sSvcParam.iPicHeight = (!sSvcParam.iPicHeight) ? iSourceHeight : sSvcParam.iPicHeight;
   
-  iTotalFrameMax = (int32_t)fs.uiFrameToBeCoded;
   //  sSvcParam.bSimulcastAVC = true;
-  if (cmResultSuccess != td->pSVCEncoder->InitializeExt (&sSvcParam)) { // SVC encoder initialization
+  if (cmResultSuccess != this->pSVCEncoder->InitializeExt (&sSvcParam)) { // SVC encoder initialization
     fprintf (stderr, "SVC encoder Initialize failed\n");
     iRet = 1;
     goto INSIDE_MEM_FREE;
@@ -406,7 +333,7 @@ void* ThreadFunction(void* ptr)
       SDumpLayer sDumpLayer;
       sDumpLayer.iLayer = iLayer;
       sDumpLayer.pFileName = fs.sRecFileName[iLayer];
-      if (cmResultSuccess != td->pSVCEncoder->SetOption (ENCODER_OPTION_DUMP_FILE, &sDumpLayer)) {
+      if (cmResultSuccess != this->pSVCEncoder->SetOption (ENCODER_OPTION_DUMP_FILE, &sDumpLayer)) {
         fprintf (stderr, "SetOption ENCODER_OPTION_DUMP_FILE failed!\n");
         iRet = 1;
         goto INSIDE_MEM_FREE;
@@ -431,88 +358,12 @@ void* ThreadFunction(void* ptr)
     goto INSIDE_MEM_FREE;
   }
 #endif
-  
-  pFileYUV = fopen (fs.strSeqFile.c_str(), "rb");
-  if (pFileYUV != NULL) {
-#if defined(_WIN32) || defined(_WIN64)
-#if _MSC_VER >= 1400
-    if (!_fseeki64 (pFileYUV, 0, SEEK_END)) {
-      int64_t i_size = _ftelli64 (pFileYUV);
-      _fseeki64 (pFileYUV, 0, SEEK_SET);
-      iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
-    }
-#else
-    if (!fseek (pFileYUV, 0, SEEK_END)) {
-      int64_t i_size = ftell (pFileYUV);
-      fseek (pFileYUV, 0, SEEK_SET);
-      iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
-    }
-#endif
-#else
-    if (!fseeko (pFileYUV, 0, SEEK_END)) {
-      int64_t i_size = ftello (pFileYUV);
-      fseeko (pFileYUV, 0, SEEK_SET);
-      iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
-    }
-#endif
-  } else {
-    fprintf (stderr, "Unable to open source sequence file (%s), check corresponding path!\n",
-             fs.strSeqFile.c_str());
-    iRet = 1;
-    goto INSIDE_MEM_FREE;
+  if (pSrcPic) {
+    delete pSrcPic;
+    pSrcPic = NULL;
   }
-  
-  iFrameIdx = 0;
-
-  while (iFrameIdx < iTotalFrameMax && (((int32_t)fs.uiFrameToBeCoded <= 0)
-                                        || (iFrameIdx < (int32_t)fs.uiFrameToBeCoded))) {
-    
-#ifdef ONLY_ENC_FRAMES_NUM
-    // Only encoded some limited frames here
-    if (iActualFrameEncodedCount >= ONLY_ENC_FRAMES_NUM) {
-      break;
-    }
-#endif//ONLY_ENC_FRAMES_NUM
-    bool bCanBeRead = false;
-    bCanBeRead = (fread (pYUV, 1, kiPicResSize, pFileYUV) == kiPicResSize);
-    
-    if (!bCanBeRead)
-      break;
-    // To encoder this frame
-    iStart = WelsTime();
-    pSrcPic->uiTimeStamp = WELS_ROUND (iFrameIdx * (1000 / sSvcParam.fMaxFrameRate));
-    int iEncFrames = td->pSVCEncoder->EncodeFrame (pSrcPic, &sFbi);
-    iTotal += WelsTime() - iStart;
-    ++ iFrameIdx;
-    if (videoFrameTypeSkip == sFbi.eFrameType) {
-      continue;
-    }
-    
-    if (iEncFrames == cmResultSuccess) {
-      SendIGTLinkMessage(td, pSrcPic, &sFbi);
-#if defined (STICK_STREAM_SIZE)
-      if (fTrackStream) {
-        fwrite (&iFrameSize, 1, sizeof (int), fTrackStream);
-      }
-#endif//STICK_STREAM_SIZE
-      ++ iActualFrameEncodedCount; // excluding skipped frame time
-    } else {
-      fprintf (stderr, "EncodeFrame(), ret: %d, frame index: %d.\n", iEncFrames, iFrameIdx);
-    }
-    
-  }
-  
-  if (iActualFrameEncodedCount > 0) {
-    double dElapsed = iTotal / 1e6;
-    printf ("Width:\t\t%d\nHeight:\t\t%d\nFrames:\t\t%d\nencode time:\t%f sec\nFPS:\t\t%f fps\n",
-            sSvcParam.iPicWidth, sSvcParam.iPicHeight,
-            iActualFrameEncodedCount, dElapsed, (iActualFrameEncodedCount * 1.0) / dElapsed);
-#if defined (WINDOWS_PHONE)
-    g_fFPS = (iActualFrameEncodedCount * 1.0f) / (float) dElapsed;
-    g_dEncoderTime = dElapsed;
-    g_iEncodedFrame = iActualFrameEncodedCount;
-#endif
-  }
+  this->stop = false;
+  return true;
 INSIDE_MEM_FREE:
   if (pFpBs) {
     fclose (pFpBs);
@@ -530,22 +381,189 @@ INSIDE_MEM_FREE:
     fpGolden = NULL;
   }
 #endif
-  // Destruction memory introduced in this routine
-  if (pFileYUV != NULL) {
-    fclose (pFileYUV);
-    pFileYUV = NULL;
-  }
-  if (pYUV) {
-    delete[] pYUV;
-    pYUV = NULL;
-  }
   if (pSrcPic) {
     delete pSrcPic;
     pSrcPic = NULL;
   }
-  td->stop = true;
-  return NULL;
+  this->stop = true;
+  return false;
 }
 
+void VideoStreamIGTLinkServer::SendIGTLinkMessage()
+{
+  igtl::VideoMessage::Pointer videoMsg;
+  videoMsg = igtl::VideoMessage::New();
+  videoMsg->SetDeviceName("Video");
+  int frameSize = pSrcPic->iPicWidth* pSrcPic->iPicHeight * 3 >> 1;
+  if (this->useCompress)
+  {
+    int frameSize = 0;
+    int iLayer = 0;
+    if (sFbi.iFrameSizeInBytes > 0)
+    {
+      videoMsg->SetBitStreamSize(sFbi.iFrameSizeInBytes);
+      videoMsg->AllocateScalars();
+      videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
+      videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
+      videoMsg->SetWidth(pSrcPic->iPicWidth);
+      videoMsg->SetHeight(pSrcPic->iPicHeight);
+      while (iLayer < sFbi.iLayerNum) {
+        SLayerBSInfo* pLayerBsInfo = &sFbi.sLayerInfo[iLayer];
+        if (pLayerBsInfo != NULL) {
+          int iLayerSize = 0;
+          int iNalIdx = pLayerBsInfo->iNalCount - 1;
+          do {
+            iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
+            -- iNalIdx;
+          } while (iNalIdx >= 0);
+          frameSize += iLayerSize;
+          for (int i = 0; i < iLayerSize ; i++)
+          {
+            videoMsg->GetPackFragmentPointer(2)[frameSize-iLayerSize+i] = pLayerBsInfo->pBsBuf[i];
+          }
+        }
+        ++ iLayer;
+      }
+      videoMsg->Pack();
+    }
+  }
+  else
+  {
+    videoMsg->SetBitStreamSize(frameSize);
+    videoMsg->AllocateScalars();
+    videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
+    videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
+    videoMsg->SetWidth(pSrcPic->iPicWidth);
+    videoMsg->SetHeight(pSrcPic->iPicHeight);
+    videoMsg->m_Frame= pSrcPic->pData[0];
+    videoMsg->Pack();
+  }
+  this->glock->Lock();
+  for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
+  {
+    this->socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
+  }
+  this->glock->Unlock();
+  igtl::Sleep(this->interval);
+}
+
+void* VideoStreamIGTLinkServer::ThreadFunction(void)
+{
+  if(this->InitializeEncoder())
+  {
+    int64_t iStart = 0, iTotal = 0;
+    int32_t iActualFrameEncodedCount = 0;
+    int32_t iFrameIdx = 0;
+    int32_t iTotalFrameMax = -1;
+    int kiPicResSize = pSrcPic->iPicWidth*pSrcPic->iPicHeight*3>>1;
+    
+    bool readFromFile = true;
+    if (readFromFile)
+    {
+      FILE* pFileYUV = NULL;
+      bool fileValid = true;
+      pFileYUV = fopen (fs.strSeqFile.c_str(), "rb");
+      if (pFileYUV != NULL) {
+#if defined(_WIN32) || defined(_WIN64)
+#if _MSC_VER >= 1400
+        if (!_fseeki64 (pFileYUV, 0, SEEK_END)) {
+          int64_t i_size = _ftelli64 (pFileYUV);
+          _fseeki64 (pFileYUV, 0, SEEK_SET);
+          iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
+        }
+#else
+        if (!fseek (pFileYUV, 0, SEEK_END)) {
+          int64_t i_size = ftell (pFileYUV);
+          fseek (pFileYUV, 0, SEEK_SET);
+          iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
+        }
+#endif
+#else
+        if (!fseeko (pFileYUV, 0, SEEK_END)) {
+          int64_t i_size = ftello (pFileYUV);
+          fseeko (pFileYUV, 0, SEEK_SET);
+          iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
+        }
+#endif
+      } else {
+        fprintf (stderr, "Unable to open source sequence file (%s), check corresponding path!\n",
+                 fs.strSeqFile.c_str());
+        fileValid = false;
+      }
+      uint8_t* pYUV = new uint8_t[kiPicResSize];
+      this->SetInputFramePointer(pYUV);
+      while (fileValid && iFrameIdx < iTotalFrameMax && (((int32_t)fs.uiFrameToBeCoded <= 0)
+                                            || (iFrameIdx < (int32_t)fs.uiFrameToBeCoded))) {
+        
+    #ifdef ONLY_ENC_FRAMES_NUM
+        // Only encoded some limited frames here
+        if (iActualFrameEncodedCount >= ONLY_ENC_FRAMES_NUM) {
+          break;
+        }
+    #endif//ONLY_ENC_FRAMES_NUM
+        bool bCanBeRead = false;
+        
+        bCanBeRead = (fread (pYUV, 1, kiPicResSize, pFileYUV) == kiPicResSize);
+        
+        if (!bCanBeRead)
+          break;
+        // To encoder this frame
+        iStart = WelsTime();
+        this->pSrcPic->uiTimeStamp = WELS_ROUND (iFrameIdx * (1000 / sSvcParam.fMaxFrameRate));
+        int iEncFrames = this->pSVCEncoder->EncodeFrame (pSrcPic, &sFbi);
+        iTotal += WelsTime() - iStart;
+        ++ iFrameIdx;
+        if (sFbi.eFrameType == videoFrameTypeSkip) {
+          continue;
+        }
+        
+        if (iEncFrames == cmResultSuccess) {
+          SendIGTLinkMessage();
+    #if defined (STICK_STREAM_SIZE)
+          if (fTrackStream) {
+            fwrite (&iFrameSize, 1, sizeof (int), fTrackStream);
+          }
+    #endif//STICK_STREAM_SIZE
+          ++ iActualFrameEncodedCount; // excluding skipped frame time
+        } else {
+          fprintf (stderr, "EncodeFrame(), ret: %d, frame index: %d.\n", iEncFrames, iFrameIdx);
+        }
+      }
+      delete[] pYUV;
+      pYUV = NULL;
+    }
+    
+    if (iActualFrameEncodedCount > 0) {
+      double dElapsed = iTotal / 1e6;
+      printf ("Width:\t\t%d\nHeight:\t\t%d\nFrames:\t\t%d\nencode time:\t%f sec\nFPS:\t\t%f fps\n",
+              sSvcParam.iPicWidth, sSvcParam.iPicHeight,
+              iActualFrameEncodedCount, dElapsed, (iActualFrameEncodedCount * 1.0) / dElapsed);
+  #if defined (WINDOWS_PHONE)
+      g_fFPS = (iActualFrameEncodedCount * 1.0f) / (float) dElapsed;
+      g_dEncoderTime = dElapsed;
+      g_iEncodedFrame = iActualFrameEncodedCount;
+  #endif
+    }
+  }
+}
+
+
+
+int VideoStreamIGTLinkServer::encodeSingleFrame()
+{
+  return pSVCEncoder->EncodeFrame(pSrcPic, &sFbi);
+}
+
+void VideoStreamIGTLinkServer::SetInputFramePointer(uint8_t* picPointer)
+{
+  if (this->stop == false)
+  {
+    int iSourceWidth = pSrcPic->iPicWidth;
+    int iSourceHeight = pSrcPic->iPicHeight;
+    pSrcPic->pData[0] = picPointer;
+    pSrcPic->pData[1] = pSrcPic->pData[0] + (iSourceWidth * iSourceHeight);
+    pSrcPic->pData[2] = pSrcPic->pData[1] + (iSourceWidth * iSourceHeight >> 2);
+  }
+}
 
 
