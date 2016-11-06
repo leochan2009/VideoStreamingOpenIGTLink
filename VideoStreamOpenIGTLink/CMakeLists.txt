@@ -21,10 +21,11 @@ INCLUDE (${VideoStreamOpenIGTLink_SOURCE_DIR}/GenerateVideoStreamOpenIGTLinkConf
 #add_subdirectory(${PARENT_DIR}/Testing/OpenH264)
 SET(VideoStreamOpenIGTLink_SOURCES ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkServer.cxx ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkReceiver.cxx ${PARENT_DIR}/OpenH264/test/api/sha1.c H264Decoder.cpp ${PARENT_DIR}/OpenH264/codec/console/common/src/read_config.cpp)
 SET(VideoStreamOpenIGTLink_INCLUDES ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkServer.h ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkReceiver.h ${PARENT_DIR}/OpenH264/test/sha1.h H264Decoder.h ${PARENT_DIR}/OpenH264/codec/console/common/inc/read_config.h)
-
+message("${OpenIGTLink_INCLUDE_DIRS}")
 SET(VideoStreamOpenIGTLink_INCLUDE_DIRS
 	${VideoStreamOpenIGTLink_INCLUDE_DIRS}
   ${VideoStreamOpenIGTLink_SOURCE_DIR}
+  ${OpenIGTLink_INCLUDE_DIRS}
   "${PARENT_DIR}/OpenH264/codec"
   "${PARENT_DIR}/OpenH264/codec/common/inc"
   "${PARENT_DIR}/OpenH264/codec/console/common/src"
@@ -43,9 +44,9 @@ SET(VideoStreamOpenIGTLink_LIBRARY_PATH ${VideoStreamOpenIGTLink_BINARY_DIR} CAC
 SET(VideoStreamOpenIGTLink_INCLUDE_PATH ${VideoStreamOpenIGTLink_INCLUDE_DIRS} CACHE INTERNAL "Include path for project that uses VideoStreamOpenIGTLink.")
 add_library( VideoStreamOpenIGTLink ${VideoStreamOpenIGTLink_SOURCES} ${VideoStreamOpenIGTLink_INCLUDES})
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  target_link_libraries( VideoStreamOpenIGTLink OpenIGTLink ${PARENT_DIR}/OpenH264/OpenH264.lib)
-  SET(VideoStreamOpenIGTLink_LIBRARIES ${VideoStreamOpenIGTLink_BINARY_DIR}/Debug/VideoStreamOpenIGTLink.lib OpenIGTLink ${PARENT_DIR}/OpenH264/OpenH264.lib CACHE INTERNAL "Single output directory for building all libraries.")
+  target_link_libraries( VideoStreamOpenIGTLink ${PARENT_DIR}/OpenIGTLink-build/bin/Debug/OpenIGTLink.lib ${PARENT_DIR}/OpenH264/openH264.lib)
+  SET(VideoStreamOpenIGTLink_LIBRARIES ${VideoStreamOpenIGTLink_BINARY_DIR}/Debug/VideoStreamOpenIGTLink.lib ${PARENT_DIR}/OpenIGTLink-build/bin/Debug/OpenIGTLink.lib ${PARENT_DIR}/OpenH264/openh264.lib CACHE INTERNAL "Single output directory for building all libraries.")
 else(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  target_link_libraries( VideoStreamOpenIGTLink OpenIGTLink ${PARENT_DIR}/OpenH264/libopenh264.a)
-  SET(VideoStreamOpenIGTLink_LIBRARIES ${VideoStreamOpenIGTLink_BINARY_DIR}/Debug/libVideoStreamOpenIGTLink.a OpenIGTLink ${PARENT_DIR}/OpenH264/libOpenH264.a CACHE INTERNAL "Single output directory for building all libraries.")
+  target_link_libraries( VideoStreamOpenIGTLink ${PARENT_DIR}/OpenIGTLink-build/bin/Debug/libOpenIGTLink.a ${PARENT_DIR}/OpenH264/libopenh264.a)
+  SET(VideoStreamOpenIGTLink_LIBRARIES ${VideoStreamOpenIGTLink_BINARY_DIR}/Debug/libVideoStreamOpenIGTLink.a ${PARENT_DIR}/OpenIGTLink-build/bin/Debug/libOpenIGTLink.a ${PARENT_DIR}/OpenH264/libopenh264.a CACHE INTERNAL "Single output directory for building all libraries.")
 endif(CMAKE_SYSTEM_NAME STREQUAL "Windows")

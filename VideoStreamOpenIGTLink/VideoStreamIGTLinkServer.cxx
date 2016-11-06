@@ -51,6 +51,9 @@ VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
   this->argc = argc;
   this->augments = std::string(argv[1]);
   this->waitSTTCommand = true;
+  this->InitializationDone = false;
+  this->conditionVar = igtl::ConditionVariable::New();
+  this->glock = igtl::SimpleMutexLock::New();
 }
 
 int VideoStreamIGTLinkServer::Run()
@@ -64,7 +67,10 @@ int VideoStreamIGTLinkServer::Run()
         this->bConfigFile = true;
         iRet = StartServer(18944);
         if (iRet > 0)
+        {
+          this->ThreadFunctionEncodeFile();
           return 0;
+        }
       }
     }
   }
@@ -74,6 +80,23 @@ int VideoStreamIGTLinkServer::Run()
 
 int VideoStreamIGTLinkServer::StartServer (int portNum)
 {
+  Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunctionServer;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
+  PthreadPtr   p = *(PthreadPtr*)&t;
+  pthread_t    tid;
+  if (pthread_create(&tid, 0, p, this) == 0)
+    pthread_detach(tid);
+  this->glock->Lock();
+  while(this->stop)
+  {
+    this->conditionVar->Wait(this->glock);
+  }
+  this->glock->Unlock();
+  return true;
+}
+
+
+void* VideoStreamIGTLinkServer::ThreadFunctionServer()
+{
   if (this->serverSocket.IsNotNull())
   {
     this->serverSocket->CloseSocket();
@@ -82,22 +105,20 @@ int VideoStreamIGTLinkServer::StartServer (int portNum)
   this->serverSocket = igtl::ServerSocket::New();
   int port     = 18944; //atoi(this->augments[1]);
   int r = serverSocket->CreateServer(port);
-
+  
   if (r < 0)
   {
-  std::cerr << "Cannot create a server socket." << std::endl;
-  exit(0);
+    std::cerr << "Cannot create a server socket." << std::endl;
+    exit(0);
   }
   
   igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
-  this->glock = igtl::MutexLock::New();
   this->socket = igtl::Socket::New();
-
+  
   while (1)
   {
     //------------------------------------------------------------
     // Waiting for Connection
-    int threadID = -1;
     socket = serverSocket->WaitForConnection(1000);
     
     if (socket.IsNotNull()) // if client connected
@@ -114,12 +135,12 @@ int VideoStreamIGTLinkServer::StartServer (int portNum)
         this->glock    = glock;
         this->socket   = socket;
         this->stop     = 0;
-        Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunction;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
+        /*Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunctionEncodeFile;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
         PthreadPtr   p = *(PthreadPtr*)&t;
         pthread_t    tid;
         if (pthread_create(&tid, 0, p, this) == 0)
           pthread_detach(tid);
-
+        */
         while (!this->stop)
         {
           igtl::Sleep(10);
@@ -139,12 +160,6 @@ int VideoStreamIGTLinkServer::StartServer (int portNum)
           int rs = socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
           if (rs == 0)
           {
-            if (threadID >= 0)
-            {
-              this->stop = 1;
-              threader->TerminateThread(threadID);
-              threadID = -1;
-            }
             std::cerr << "Disconnecting the client." << std::endl;
             break;
           }
@@ -161,16 +176,17 @@ int VideoStreamIGTLinkServer::StartServer (int portNum)
           {
             socket->Skip(headerMsg->GetBodySizeToRead(), 0);
             std::cerr << "Received a STP_VIDEO message." << std::endl;
-            if (threadID >= 0)
+            this->stop  = 1;
+            std::cerr << "Disconnecting the client." << std::endl;
+            this->InitializationDone = false;
+            this->stop=true;
+            this->glock->Lock();
+            if (this->socket.IsNotNull())
             {
-              this->stop  = 1;
-              threader->TerminateThread(threadID);
-              threadID = -1;
-              std::cerr << "Disconnecting the client." << std::endl;
               this->socket->CloseSocket();
-              this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
-              
             }
+            this->glock->Unlock();
+            this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
             break;
           }
           else if (strcmp(headerMsg->GetDeviceType(), "STT_VIDEO") == 0)
@@ -192,11 +208,13 @@ int VideoStreamIGTLinkServer::StartServer (int portNum)
               this->glock    = glock;
               this->socket   = socket;
               this->stop     = 0;
-              Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunction;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
-              PthreadPtr   p = *(PthreadPtr*)&t;
-              pthread_t    tid;
-              if (pthread_create(&tid, 0, p, this) == 0)
-                pthread_detach(tid);
+              this->conditionVar->Signal();
+              
+              /*Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunctionEncodeFile;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
+               PthreadPtr   p = *(PthreadPtr*)&t;
+               pthread_t    tid;
+               if (pthread_create(&tid, 0, p, this) == 0)
+               pthread_detach(tid);*/
             }
           }
           else
@@ -220,7 +238,6 @@ int VideoStreamIGTLinkServer::StartServer (int portNum)
   this->glock->Unlock();
   this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
   this->serverSocket = NULL;
-  return true;
 }
 
 bool VideoStreamIGTLinkServer::CompareHash (const unsigned char* digest, const char* hashStr) {
@@ -241,13 +258,6 @@ bool VideoStreamIGTLinkServer::InitializeEncoder()
   //------------------------------------------------------------
   int iRet = 0;
   iRet = CreateSVCEncHandle(&(this->pSVCEncoder));
-  if (iRet) {
-    this->stop = true;
-  }
-  else
-  {
-    this->stop = false;
-  }
   if (this->pSVCEncoder == NULL)
     this->stop = true;
   
@@ -358,11 +368,7 @@ bool VideoStreamIGTLinkServer::InitializeEncoder()
     goto INSIDE_MEM_FREE;
   }
 #endif
-  if (pSrcPic) {
-    delete pSrcPic;
-    pSrcPic = NULL;
-  }
-  this->stop = false;
+  this->InitializationDone = true;
   return true;
 INSIDE_MEM_FREE:
   if (pFpBs) {
@@ -386,6 +392,7 @@ INSIDE_MEM_FREE:
     pSrcPic = NULL;
   }
   this->stop = true;
+  this->InitializationDone = false;
   return false;
 }
 
@@ -439,112 +446,117 @@ void VideoStreamIGTLinkServer::SendIGTLinkMessage()
     videoMsg->Pack();
   }
   this->glock->Lock();
-  for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
+  if(this->socket)
   {
-    this->socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
+    for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
+    {
+      this->socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
+    }
   }
   this->glock->Unlock();
   igtl::Sleep(this->interval);
 }
 
-void* VideoStreamIGTLinkServer::ThreadFunction(void)
+void* VideoStreamIGTLinkServer::ThreadFunctionEncodeFile(void)
 {
-  if(this->InitializeEncoder())
+  if(!this->InitializationDone)
   {
-    int64_t iStart = 0, iTotal = 0;
-    int32_t iActualFrameEncodedCount = 0;
-    int32_t iFrameIdx = 0;
-    int32_t iTotalFrameMax = -1;
-    int kiPicResSize = pSrcPic->iPicWidth*pSrcPic->iPicHeight*3>>1;
-    
-    bool readFromFile = true;
-    if (readFromFile)
-    {
-      FILE* pFileYUV = NULL;
-      bool fileValid = true;
-      pFileYUV = fopen (fs.strSeqFile.c_str(), "rb");
-      if (pFileYUV != NULL) {
+    this->InitializeEncoder();
+  }
+  int64_t iStart = 0, iTotal = 0;
+  int32_t iActualFrameEncodedCount = 0;
+  int32_t iFrameIdx = 0;
+  int32_t iTotalFrameMax = -1;
+  int kiPicResSize = pSrcPic->iPicWidth*pSrcPic->iPicHeight*3>>1;
+  
+  bool readFromFile = true;
+  if (readFromFile)
+  {
+    FILE* pFileYUV = NULL;
+    bool fileValid = true;
+    pFileYUV = fopen (fs.strSeqFile.c_str(), "rb");
+    if (pFileYUV != NULL) {
 #if defined(_WIN32) || defined(_WIN64)
 #if _MSC_VER >= 1400
-        if (!_fseeki64 (pFileYUV, 0, SEEK_END)) {
-          int64_t i_size = _ftelli64 (pFileYUV);
-          _fseeki64 (pFileYUV, 0, SEEK_SET);
-          iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
-        }
+      if (!_fseeki64 (pFileYUV, 0, SEEK_END)) {
+        int64_t i_size = _ftelli64 (pFileYUV);
+        _fseeki64 (pFileYUV, 0, SEEK_SET);
+        iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
+      }
 #else
-        if (!fseek (pFileYUV, 0, SEEK_END)) {
-          int64_t i_size = ftell (pFileYUV);
-          fseek (pFileYUV, 0, SEEK_SET);
-          iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
-        }
+      if (!fseek (pFileYUV, 0, SEEK_END)) {
+        int64_t i_size = ftell (pFileYUV);
+        fseek (pFileYUV, 0, SEEK_SET);
+        iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
+      }
 #endif
 #else
-        if (!fseeko (pFileYUV, 0, SEEK_END)) {
-          int64_t i_size = ftello (pFileYUV);
-          fseeko (pFileYUV, 0, SEEK_SET);
-          iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
-        }
+      if (!fseeko (pFileYUV, 0, SEEK_END)) {
+        int64_t i_size = ftello (pFileYUV);
+        fseeko (pFileYUV, 0, SEEK_SET);
+        iTotalFrameMax = WELS_MAX ((int32_t) (i_size / kiPicResSize), iTotalFrameMax);
+      }
 #endif
-      } else {
-        fprintf (stderr, "Unable to open source sequence file (%s), check corresponding path!\n",
-                 fs.strSeqFile.c_str());
-        fileValid = false;
-      }
-      uint8_t* pYUV = new uint8_t[kiPicResSize];
-      this->SetInputFramePointer(pYUV);
-      while (fileValid && iFrameIdx < iTotalFrameMax && (((int32_t)fs.uiFrameToBeCoded <= 0)
-                                            || (iFrameIdx < (int32_t)fs.uiFrameToBeCoded))) {
-        
-    #ifdef ONLY_ENC_FRAMES_NUM
-        // Only encoded some limited frames here
-        if (iActualFrameEncodedCount >= ONLY_ENC_FRAMES_NUM) {
-          break;
-        }
-    #endif//ONLY_ENC_FRAMES_NUM
-        bool bCanBeRead = false;
-        
-        bCanBeRead = (fread (pYUV, 1, kiPicResSize, pFileYUV) == kiPicResSize);
-        
-        if (!bCanBeRead)
-          break;
-        // To encoder this frame
-        iStart = WelsTime();
-        this->pSrcPic->uiTimeStamp = WELS_ROUND (iFrameIdx * (1000 / sSvcParam.fMaxFrameRate));
-        int iEncFrames = this->pSVCEncoder->EncodeFrame (pSrcPic, &sFbi);
-        iTotal += WelsTime() - iStart;
-        ++ iFrameIdx;
-        if (sFbi.eFrameType == videoFrameTypeSkip) {
-          continue;
-        }
-        
-        if (iEncFrames == cmResultSuccess) {
-          SendIGTLinkMessage();
-    #if defined (STICK_STREAM_SIZE)
-          if (fTrackStream) {
-            fwrite (&iFrameSize, 1, sizeof (int), fTrackStream);
-          }
-    #endif//STICK_STREAM_SIZE
-          ++ iActualFrameEncodedCount; // excluding skipped frame time
-        } else {
-          fprintf (stderr, "EncodeFrame(), ret: %d, frame index: %d.\n", iEncFrames, iFrameIdx);
-        }
-      }
-      delete[] pYUV;
-      pYUV = NULL;
+    } else {
+      fprintf (stderr, "Unable to open source sequence file (%s), check corresponding path!\n",
+               fs.strSeqFile.c_str());
+      fileValid = false;
     }
     
-    if (iActualFrameEncodedCount > 0) {
-      double dElapsed = iTotal / 1e6;
-      printf ("Width:\t\t%d\nHeight:\t\t%d\nFrames:\t\t%d\nencode time:\t%f sec\nFPS:\t\t%f fps\n",
-              sSvcParam.iPicWidth, sSvcParam.iPicHeight,
-              iActualFrameEncodedCount, dElapsed, (iActualFrameEncodedCount * 1.0) / dElapsed);
-  #if defined (WINDOWS_PHONE)
-      g_fFPS = (iActualFrameEncodedCount * 1.0f) / (float) dElapsed;
-      g_dEncoderTime = dElapsed;
-      g_iEncodedFrame = iActualFrameEncodedCount;
-  #endif
+    uint8_t* pYUV = new uint8_t[kiPicResSize];
+    this->SetInputFramePointer(pYUV);
+    while (fileValid && iFrameIdx < iTotalFrameMax && (((int32_t)fs.uiFrameToBeCoded <= 0)
+                                          || (iFrameIdx < (int32_t)fs.uiFrameToBeCoded))) {
+      
+  #ifdef ONLY_ENC_FRAMES_NUM
+      // Only encoded some limited frames here
+      if (iActualFrameEncodedCount >= ONLY_ENC_FRAMES_NUM) {
+        break;
+      }
+  #endif//ONLY_ENC_FRAMES_NUM
+      bool bCanBeRead = false;
+      
+      bCanBeRead = (fread (pYUV, 1, kiPicResSize, pFileYUV) == kiPicResSize);
+      
+      if (!bCanBeRead)
+        break;
+      // To encoder this frame
+      iStart = WelsTime();
+      this->pSrcPic->uiTimeStamp = WELS_ROUND (iFrameIdx * (1000 / sSvcParam.fMaxFrameRate));
+      int iEncFrames = this->pSVCEncoder->EncodeFrame (pSrcPic, &sFbi);
+      iTotal += WelsTime() - iStart;
+      ++ iFrameIdx;
+      if (sFbi.eFrameType == videoFrameTypeSkip) {
+        continue;
+      }
+      
+      if (iEncFrames == cmResultSuccess ) {
+        SendIGTLinkMessage();
+  #if defined (STICK_STREAM_SIZE)
+        if (fTrackStream) {
+          fwrite (&iFrameSize, 1, sizeof (int), fTrackStream);
+        }
+  #endif//STICK_STREAM_SIZE
+        ++ iActualFrameEncodedCount; // excluding skipped frame time
+      } else {
+        fprintf (stderr, "EncodeFrame(), ret: %d, frame index: %d.\n", iEncFrames, iFrameIdx);
+      }
     }
+    delete[] pYUV;
+    pYUV = NULL;
   }
+  if (iActualFrameEncodedCount > 0) {
+    double dElapsed = iTotal / 1e6;
+    printf ("Width:\t\t%d\nHeight:\t\t%d\nFrames:\t\t%d\nencode time:\t%f sec\nFPS:\t\t%f fps\n",
+            sSvcParam.iPicWidth, sSvcParam.iPicHeight,
+            iActualFrameEncodedCount, dElapsed, (iActualFrameEncodedCount * 1.0) / dElapsed);
+#if defined (WINDOWS_PHONE)
+    g_fFPS = (iActualFrameEncodedCount * 1.0f) / (float) dElapsed;
+    g_dEncoderTime = dElapsed;
+    g_iEncodedFrame = iActualFrameEncodedCount;
+#endif
+  }
+  this->stop = true;
 }
 
 
@@ -556,7 +568,7 @@ int VideoStreamIGTLinkServer::encodeSingleFrame()
 
 void VideoStreamIGTLinkServer::SetInputFramePointer(uint8_t* picPointer)
 {
-  if (this->stop == false)
+  if (this->InitializationDone == true)
   {
     int iSourceWidth = pSrcPic->iPicWidth;
     int iSourceHeight = pSrcPic->iPicHeight;

@@ -22,6 +22,7 @@
 #include "igtlVideoMessage.h"
 #include "igtlServerSocket.h"
 #include "igtlMultiThreader.h"
+#include "igtlConditionVariable.h"
 #include "codec_def.h"
 #include "codec_app_def.h"
 #include "read_config.h"
@@ -63,13 +64,15 @@ public:
   
   void SendIGTLinkMessage();
   
-  void* ThreadFunction(void);
+  void* ThreadFunctionEncodeFile(void);
+  
+  void* ThreadFunctionServer(void);
   
   ISVCEncoder*  pSVCEncoder;
   
   int   nloop;
   
-  igtl::MutexLock::Pointer glock;
+  igtl::SimpleMutexLock* glock;
   
   igtl::Socket::Pointer socket;
   
@@ -94,6 +97,8 @@ public:
   static bool CompareHash (const unsigned char* digest, const char* hashStr);
 
   bool waitSTTCommand;
+  
+  bool InitializationDone;
 
 private:
   SEncParamExt sSvcParam;
@@ -102,4 +107,7 @@ private:
   CReadConfig cRdCfg;
   SFrameBSInfo sFbi;
   SSourcePicture* pSrcPic;
+  
+  igtl::ConditionVariable::Pointer conditionVar;
+  
 };

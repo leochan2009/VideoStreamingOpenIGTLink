@@ -113,14 +113,20 @@ int VideoStreamIGTLinkReceiver::Run()
       }
       this->SetWidth(videoMsg->GetWidth());
       this->SetHeight(videoMsg->GetHeight());
-      this->SetStreamLength(videoMsg->GetBitStreamSize());
-      uint8_t* bitstream = new uint8_t[videoMsg->GetBitStreamSize()];
-      memcpy(bitstream, videoMsg->GetPackFragmentPointer(2), videoMsg->GetBitStreamSize());
-      this->ProcessVideoStream(bitstream);
+      int streamLength = videoMsg->GetPackSize()-IGTL_VIDEO_HEADER_SIZE-IGTL_HEADER_SIZE;
+      this->SetStreamLength(streamLength);
+      if (!(this->videoMessageBuffer==NULL))
+      {
+        delete[] this->videoMessageBuffer;
+      }
+      this->videoMessageBuffer = new uint8_t[streamLength];
+      memcpy(this->videoMessageBuffer, videoMsg->GetPackFragmentPointer(2), streamLength);
+      this->ProcessVideoStream(this->videoMessageBuffer);
       loop++;
-      if (loop>10)
+      if (loop>100)
       {
         this->SendStopMessage();
+        break;
       }
     }
     else
@@ -165,24 +171,19 @@ void VideoStreamIGTLinkReceiver::SetDecodedFrame()
     delete[] this->decodedFrame;
   }
   this->decodedFrame = NULL;
-  this->decodedFrame = new unsigned char[this->Width*this->Height*3];
+  this->decodedFrame = new unsigned char[this->Width*this->Height*3>>1];
 }
 
 int VideoStreamIGTLinkReceiver::ProcessVideoStream(uint8_t* bitStream)
 {
   //std::cerr << "Receiving Video data type." << std::endl;
-  
-  if (!(this->videoMessageBuffer==NULL))
-  {
-    delete[] this->videoMessageBuffer;
-  }
-  this->videoMessageBuffer = new uint8_t[StreamLength];
-  memcpy(this->videoMessageBuffer, bitStream, StreamLength);// copy slow down the process, however, the videoMsg is a smart pointer, it gets deleted unpredictable.
+  //this->videoMessageBuffer = new uint8_t[StreamLength];
+  //memcpy(this->videoMessageBuffer, bitStream, StreamLength);// copy slow down the process, however, the videoMsg is a smart pointer, it gets deleted unpredictable.
   
   if (useCompress)
   {
     this->SetDecodedFrame();
-    H264DecodeInstance->DecodeSingleFrame(this->pSVCDecoder, videoMessageBuffer, this->decodedFrame, kpOuputFileName, Width, Height, StreamLength, pOptionFileName);
+    H264DecodeInstance->DecodeSingleFrame(this->pSVCDecoder, bitStream, this->decodedFrame, kpOuputFileName, Width, Height, StreamLength, pOptionFileName);
     if (this->decodedFrame)
     {
       return 1;

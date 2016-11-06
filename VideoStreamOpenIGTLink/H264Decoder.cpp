@@ -129,7 +129,7 @@ void H264Decode::DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264
   FILE* pYuvFile    = NULL;
   FILE* pOptionFile = NULL;
   // Lenght input mode support
-  /*if (kpOuputFileName) {
+  if (kpOuputFileName) {
     pYuvFile = fopen (kpOuputFileName, "ab");
     if (pYuvFile == NULL) {
       fprintf (stderr, "Can not open yuv file to output result of decoding..\n");
@@ -142,7 +142,7 @@ void H264Decode::DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264
     // any options
   }
   
-  if (pOptionFileName) {
+  /*if (pOptionFileName) {
     pOptionFile = fopen (pOptionFileName, "wb");
     if (pOptionFile == NULL) {
       fprintf (stderr, "Can not open optional file for write..\n");
@@ -201,6 +201,7 @@ void H264Decode::DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264
     iTotal  = iEnd - iStart;
     if (sDstBufInfo.iBufferStatus == 1)
     {
+      Process ((void**)pData, &sDstBufInfo, pYuvFile);
       iWidth  = sDstBufInfo.UsrData.sSystemBuffer.iWidth;
       iHeight = sDstBufInfo.UsrData.sSystemBuffer.iHeight;
       
@@ -227,6 +228,7 @@ void H264Decode::DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264
     iEnd    = getCurrentTime();
     iTotal = iEnd - iStart;
     if (sDstBufInfo.iBufferStatus == 1) {
+      Process ((void**)pData, &sDstBufInfo, pYuvFile);
       ComposeByteSteam(pData, sDstBufInfo, outputByteStream, iWidth,iHeight);
       iWidth  = sDstBufInfo.UsrData.sSystemBuffer.iWidth;
       iHeight = sDstBufInfo.UsrData.sSystemBuffer.iHeight;
