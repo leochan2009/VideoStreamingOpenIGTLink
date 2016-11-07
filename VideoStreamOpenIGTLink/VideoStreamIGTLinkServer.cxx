@@ -134,7 +134,9 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer()
         strncpy(this->codecName, "H264", IGTL_VIDEO_CODEC_NAME_SIZE);
         this->glock    = glock;
         this->socket   = socket;
+        this->InitializationDone = false;
         this->stop     = 0;
+        this->conditionVar->Signal();
         /*Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunctionEncodeFile;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
         PthreadPtr   p = *(PthreadPtr*)&t;
         pthread_t    tid;
@@ -143,9 +145,18 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer()
         */
         while (!this->stop)
         {
-          igtl::Sleep(10);
+          headerMsg->InitPack();
+          int rs = socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
+          if (rs == 0)
+          {
+            std::cerr << "Disconnecting the client." << std::endl;
+            break;
+          }
+          else
+          {
+            igtl::Sleep(10);
+          }
         }
-        break;
       }
       else if (this->waitSTTCommand)
       {

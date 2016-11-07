@@ -85,5 +85,7 @@ public:
   H264Decode* H264DecodeInstance;
   
   int YUV420ToRGBConversion(uint8_t *RGBFrame, uint8_t * YUV420Frame, int iHeight, int iWidth);
+  
+  bool flipAtX;
 
 };

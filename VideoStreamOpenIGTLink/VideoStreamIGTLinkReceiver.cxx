@@ -36,6 +36,7 @@ VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver()
   socket = igtl::ClientSocket::New();
   this->Height = 0;
   this->Width = 0;
+  this->flipAtX = true;
   this->H264DecodeInstance = new H264Decode();
 }
 
@@ -266,9 +267,19 @@ int VideoStreamIGTLinkReceiver::YUV420ToRGBConversion(uint8_t *RGBFrame, uint8_t
     const int G_tmp = (Y_tmp + U_tmp * guMult + V_tmp * gvMult ) >> 16;
     const int B_tmp = (Y_tmp + U_tmp * buMult                  ) >> 16;
     
-    RGBFrame[3*i]   = clip_buf[R_tmp];
-    RGBFrame[3*i+1] = clip_buf[G_tmp];
-    RGBFrame[3*i+2] = clip_buf[B_tmp];
+    if (flipAtX)
+    {
+      int pos = componentLength-i-Width+(i%Width)*2;
+      RGBFrame[3*pos] = clip_buf[R_tmp];
+      RGBFrame[3*pos+1] = clip_buf[G_tmp];
+      RGBFrame[3*pos+2] = clip_buf[B_tmp];
+    }
+    else
+    {
+      RGBFrame[3*i]   = clip_buf[R_tmp];
+      RGBFrame[3*i+1] = clip_buf[G_tmp];
+      RGBFrame[3*i+2] = clip_buf[B_tmp];
+    }
   }
   delete [] YUV444;
   YUV444 = NULL;
