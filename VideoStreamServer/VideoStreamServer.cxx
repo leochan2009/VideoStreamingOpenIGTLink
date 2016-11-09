@@ -20,7 +20,18 @@ int main (int argc, char** argv)
 #endif
 {
   VideoStreamIGTLinkServer server(argc, argv);
-  server.waitSTTCommand = true;
-  server.Run();
+  server.SetWaitSTTCommand(true);
+  server.StartServer();
+  while(1)
+  {
+    if(server.GetServerConnectStatus())
+    {
+      if (!server.GetInitializationStatus())
+      {
+        server.InitializeEncoderAndServer();
+      }
+      server.EncodeFile();
+    }
+  }
   return 0;
 }
