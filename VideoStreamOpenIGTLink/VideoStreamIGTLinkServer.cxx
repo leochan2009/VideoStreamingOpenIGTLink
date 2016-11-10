@@ -13,7 +13,6 @@
 
 #include "VideoStreamIGTLinkServer.h"
 #include "welsencUtil.cpp"
-#include <thread>
 
 typedef  void* (VideoStreamIGTLinkServer::*Thread2Ptr)(void);
 typedef  void* (*PthreadPtr)(void*);
@@ -63,9 +62,8 @@ int VideoStreamIGTLinkServer::StartServer ()
   {
     Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunctionServer;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
     PthreadPtr   p = *(PthreadPtr*)&t;
-    pthread_t    tid;
-    if (pthread_create(&tid, 0, p, this) == 0)
-      pthread_detach(tid);
+    igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
+    threader->SpawnThread((igtl::ThreadFunctionType)p, this);
     this->glock->Lock();
     while(!this->serverConnected)
     {
@@ -578,6 +576,7 @@ void* VideoStreamIGTLinkServer::EncodeFile(void)
 #endif
   }
   this->serverConnected = false;
+  return NULL;
 }
 
 
