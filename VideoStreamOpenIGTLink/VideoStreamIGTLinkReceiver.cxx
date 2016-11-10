@@ -64,7 +64,6 @@ int VideoStreamIGTLinkReceiver::Run()
   startVideoMsg->SetUseCompress(useCompress);
   startVideoMsg->Pack();
   socket->Send(startVideoMsg->GetPackPointer(), startVideoMsg->GetPackSize());
-  int loop = 0;
   std::string outputFileName = "outputDecodedVideo.yuv";
   while (1)
   {
@@ -122,9 +121,7 @@ int VideoStreamIGTLinkReceiver::Run()
       }
       this->videoMessageBuffer = new uint8_t[streamLength];
       memcpy(this->videoMessageBuffer, videoMsg->GetPackFragmentPointer(2), streamLength);
-      this->ProcessVideoStream(this->videoMessageBuffer);
-      loop++;
-      if (loop>100)
+      if (this->ProcessVideoStream(this->videoMessageBuffer)== 0)
       {
         this->SendStopMessage();
         break;

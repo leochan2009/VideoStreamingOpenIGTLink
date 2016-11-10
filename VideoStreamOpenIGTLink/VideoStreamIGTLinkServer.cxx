@@ -228,7 +228,6 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer()
               this->interval = startVideoMsg->GetTimeInterval();
               this->useCompress = startVideoMsg->GetUseCompress();
               strncpy(this->codecName, startVideoMsg->GetCodecType().c_str(), IGTL_VIDEO_CODEC_NAME_SIZE);
-              this->glock    = glock;
               this->socket   = socket;
               this->serverConnected     = true;
               this->conditionVar->Signal();
