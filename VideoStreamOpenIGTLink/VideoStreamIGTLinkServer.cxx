@@ -12,8 +12,8 @@
 =========================================================================*/
 
 #include "VideoStreamIGTLinkServer.h"
-#include <thread>
 #include "welsencUtil.cpp"
+#include <thread>
 
 typedef  void* (VideoStreamIGTLinkServer::*Thread2Ptr)(void);
 typedef  void* (*PthreadPtr)(void*);

@@ -27,20 +27,7 @@
 #include "codec_app_def.h"
 #include "read_config.h"
 #include "wels_const.h"
-
-typedef struct LayerpEncCtx_s {
-  int32_t       iDLayerQp;
-  SSliceArgument  sSliceArgument;
-} SLayerPEncCtx;
-
-typedef struct tagFilesSet {
-  std::string strBsFile;
-  std::string strSeqFile;    // frame File to read
-  std::string strLayerCfgFile[MAX_DEPENDENCY_LAYER];
-  char   sRecFileName[MAX_DEPENDENCY_LAYER][MAX_FNAME_LEN];
-  uint32_t uiFrameToBeCoded;
-} SFilesSet;
-
+#include "welsencUtil.h"
 
 class ISVCEncoder;
 
