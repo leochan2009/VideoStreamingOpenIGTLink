@@ -92,7 +92,7 @@ private:
   
   int ParseConfigForServer();
   
-  void* ThreadFunctionServer(void);
+  void* ThreadFunctionServer(void*);
   
   static bool CompareHash (const unsigned char* digest, const char* hashStr);
   

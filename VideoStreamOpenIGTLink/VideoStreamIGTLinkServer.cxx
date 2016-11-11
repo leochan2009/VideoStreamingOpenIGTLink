@@ -14,7 +14,7 @@
 #include "VideoStreamIGTLinkServer.h"
 #include "welsencUtil.cpp"
 
-typedef  void* (VideoStreamIGTLinkServer::*Thread2Ptr)(void);
+typedef  void* (VideoStreamIGTLinkServer::*Thread2Ptr)(void*);
 typedef  void* (*PthreadPtr)(void*);
 
 void UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx) {
@@ -107,16 +107,23 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
   return iRet;
 }
 
-void* VideoStreamIGTLinkServer::ThreadFunctionServer()
+void* VideoStreamIGTLinkServer::ThreadFunctionServer(void* ptr)
 {
-  if (this->serverSocket.IsNotNull())
+  //------------------------------------------------------------
+  // Get thread information
+  igtl::MultiThreader::ThreadInfo* info =
+    static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
+
+  VideoStreamIGTLinkServer* parentObj = static_cast<VideoStreamIGTLinkServer*>(info->UserData);
+
+  if (parentObj->serverSocket.IsNotNull())
   {
-    this->serverSocket->CloseSocket();
+    parentObj->serverSocket->CloseSocket();
   }
-  this->serverSocket = NULL;
-  this->serverSocket = igtl::ServerSocket::New();
+  parentObj->serverSocket = NULL;
+  parentObj->serverSocket = igtl::ServerSocket::New();
   
-  int r = serverSocket->CreateServer(this->serverPortNumber);
+  int r = parentObj->serverSocket->CreateServer(parentObj->serverPortNumber);
   
   if (r < 0)
   {
@@ -125,39 +132,33 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer()
   }
   
   igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
-  this->socket = igtl::Socket::New();
+  parentObj->socket = igtl::Socket::New();
   
   while (1)
   {
     //------------------------------------------------------------
     // Waiting for Connection
-    this->serverConnected     = false;
-    this->socket = serverSocket->WaitForConnection(1000);
+    parentObj->serverConnected     = false;
+    parentObj->socket = parentObj->serverSocket->WaitForConnection(1000);
     
-    if (socket.IsNotNull()) // if client connected
+    if (parentObj->socket.IsNotNull()) // if client connected
     {
       std::cerr << "A client is connected." << std::endl;
       igtl::MessageHeader::Pointer headerMsg;
       headerMsg = igtl::MessageHeader::New();
-      if (!this->waitSTTCommand)
+      if (!parentObj->waitSTTCommand)
       {
         // Create a message buffer to receive header
-        this->interval = 100;
-        this->useCompress = true;
-        strncpy(this->codecName, "H264", IGTL_VIDEO_CODEC_NAME_SIZE);
-        this->InitializationDone = false;
-        this->serverConnected     = true;
-        this->conditionVar->Signal();
-        /*Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunctionEncodeFile;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
-        PthreadPtr   p = *(PthreadPtr*)&t;
-        pthread_t    tid;
-        if (pthread_create(&tid, 0, p, this) == 0)
-          pthread_detach(tid);
-        */
-        while (this->serverConnected)
+        parentObj->interval = 100;
+        parentObj->useCompress = true;
+        strncpy(parentObj->codecName, "H264", IGTL_VIDEO_CODEC_NAME_SIZE);
+        parentObj->InitializationDone = false;
+        parentObj->serverConnected     = true;
+        parentObj->conditionVar->Signal();
+        while (parentObj->serverConnected)
         {
           headerMsg->InitPack();
-          int rs = socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
+          int rs = parentObj->socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
           if (rs == 0)
           {
             std::cerr << "Disconnecting the client." << std::endl;
@@ -169,7 +170,7 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer()
           }
         }
       }
-      else if (this->waitSTTCommand)
+      else if (parentObj->waitSTTCommand)
       {
         //------------------------------------------------------------
         // loop
@@ -179,7 +180,7 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer()
           headerMsg->InitPack();
           
           // Receive generic header from the socket
-          int rs = socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
+          int rs = parentObj->socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
           if (rs == 0)
           {
             std::cerr << "Disconnecting the client." << std::endl;
@@ -196,18 +197,18 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer()
           // Check data type and receive data body
           if (strcmp(headerMsg->GetDeviceType(), "STP_VIDEO") == 0)
           {
-            socket->Skip(headerMsg->GetBodySizeToRead(), 0);
+            parentObj->socket->Skip(headerMsg->GetBodySizeToRead(), 0);
             std::cerr << "Received a STP_VIDEO message." << std::endl;
             std::cerr << "Disconnecting the client." << std::endl;
-            this->InitializationDone = false;
-            this->serverConnected = false;
-            this->glock->Lock();
-            if (this->socket.IsNotNull())
+            parentObj->InitializationDone = false;
+            parentObj->serverConnected = false;
+            parentObj->glock->Lock();
+            if (parentObj->socket.IsNotNull())
             {
-              this->socket->CloseSocket();
+              parentObj->socket->CloseSocket();
             }
-            this->glock->Unlock();
-            this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
+            parentObj->glock->Unlock();
+            parentObj->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
             break;
           }
           else if (strcmp(headerMsg->GetDeviceType(), "STT_VIDEO") == 0)
@@ -219,28 +220,21 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer()
             startVideoMsg->SetMessageHeader(headerMsg);
             startVideoMsg->AllocatePack();
             
-            socket->Receive(startVideoMsg->GetPackBodyPointer(), startVideoMsg->GetPackBodySize());
+            parentObj->socket->Receive(startVideoMsg->GetPackBodyPointer(), startVideoMsg->GetPackBodySize());
             int c = startVideoMsg->Unpack(1);
             if (c & igtl::MessageHeader::UNPACK_BODY && strcmp(startVideoMsg->GetCodecType().c_str(), "H264")) // if CRC check is OK
             {
-              this->interval = startVideoMsg->GetTimeInterval();
-              this->useCompress = startVideoMsg->GetUseCompress();
-              strncpy(this->codecName, startVideoMsg->GetCodecType().c_str(), IGTL_VIDEO_CODEC_NAME_SIZE);
-              this->socket   = socket;
-              this->serverConnected     = true;
-              this->conditionVar->Signal();
-              
-              /*Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunctionEncodeFile;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
-               PthreadPtr   p = *(PthreadPtr*)&t;
-               pthread_t    tid;
-               if (pthread_create(&tid, 0, p, this) == 0)
-               pthread_detach(tid);*/
+              parentObj->interval = startVideoMsg->GetTimeInterval();
+              parentObj->useCompress = startVideoMsg->GetUseCompress();
+              strncpy(parentObj->codecName, startVideoMsg->GetCodecType().c_str(), IGTL_VIDEO_CODEC_NAME_SIZE);
+              parentObj->serverConnected     = true;
+              parentObj->conditionVar->Signal();
             }
           }
           else
           {
             std::cerr << "Receiving : " << headerMsg->GetDeviceType() << std::endl;
-            this->socket->Skip(headerMsg->GetBodySizeToRead(), 0);
+            parentObj->socket->Skip(headerMsg->GetBodySizeToRead(), 0);
           }
         }
       }
@@ -249,15 +243,15 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer()
   
   //------------------------------------------------------------
   // Close connection (The example code never reaches to this section ...)
-  serverSocket->CloseSocket();
-  this->glock->Lock();
-  if (this->socket.IsNotNull())
+  parentObj->serverSocket->CloseSocket();
+  parentObj->glock->Lock();
+  if (parentObj->socket.IsNotNull())
   {
-    this->socket->CloseSocket();
+    parentObj->socket->CloseSocket();
   }
-  this->glock->Unlock();
-  this->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
-  this->serverSocket = NULL;
+  parentObj->glock->Unlock();
+  parentObj->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
+  parentObj->serverSocket = NULL;
 }
 
 bool VideoStreamIGTLinkServer::CompareHash (const unsigned char* digest, const char* hashStr) {
