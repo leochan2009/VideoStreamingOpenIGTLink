@@ -87,12 +87,10 @@ public:
    Get the type of encoded frame
    */
   int GetVideoFrameType(){return videoFrameType;};
-
-private:
   
   int ParseConfigForServer();
   
-  void* ThreadFunctionServer(void*);
+  //void* ThreadFunctionServer(void*);
   
   static bool CompareHash (const unsigned char* digest, const char* hashStr);
   

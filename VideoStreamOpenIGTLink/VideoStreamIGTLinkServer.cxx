@@ -14,8 +14,7 @@
 #include "VideoStreamIGTLinkServer.h"
 #include "welsencUtil.cpp"
 
-typedef  void* (VideoStreamIGTLinkServer::*Thread2Ptr)(void*);
-typedef  void* (*PthreadPtr)(void*);
+void* ThreadFunctionServer(void* ptr);
 
 void UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx) {
  for (int i = 0; i < info.iLayerNum; ++i) {
@@ -52,6 +51,8 @@ VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
   this->waitSTTCommand = true;
   this->InitializationDone = false;
   this->serverPortNumber = -1;
+  this->serverSocket = igtl::ServerSocket::New();;
+  this->socket = igtl::Socket::New();;
   this->conditionVar = igtl::ConditionVariable::New();
   this->glock = igtl::SimpleMutexLock::New();
 }
@@ -60,10 +61,8 @@ int VideoStreamIGTLinkServer::StartServer ()
 {
   if (this->InitializationDone)
   {
-    Thread2Ptr   t = &VideoStreamIGTLinkServer::ThreadFunctionServer;// to avoid the use of static class pointer. http://www.scsc.no/blog/2010/09-03-creating-pthreads-in-c++-using-pointers-to-member-functions.html
-    PthreadPtr   p = *(PthreadPtr*)&t;
     igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
-    threader->SpawnThread((igtl::ThreadFunctionType)p, this);
+    threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionServer, this);
     this->glock->Lock();
     while(!this->serverConnected)
     {
@@ -107,7 +106,7 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
   return iRet;
 }
 
-void* VideoStreamIGTLinkServer::ThreadFunctionServer(void* ptr)
+void* ThreadFunctionServer(void* ptr)
 {
   //------------------------------------------------------------
   // Get thread information
@@ -115,7 +114,6 @@ void* VideoStreamIGTLinkServer::ThreadFunctionServer(void* ptr)
     static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
 
   VideoStreamIGTLinkServer* parentObj = static_cast<VideoStreamIGTLinkServer*>(info->UserData);
-
   if (parentObj->serverSocket.IsNotNull())
   {
     parentObj->serverSocket->CloseSocket();

@@ -16,7 +16,7 @@
 
 VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver()
 {
-  this->hostname = "localhost";
+  this->hostname = "10.238.129.102";
   this->port     = 18944;
   strncpy(this->codecType, "H264",4);
   this->useCompress      = true;
