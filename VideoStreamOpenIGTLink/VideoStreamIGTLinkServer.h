@@ -133,6 +133,8 @@ public:
     
   bool waitSTTCommand;
   
+  std::string deviceName;
+  
   bool InitializationDone;
   
 };

@@ -36,6 +36,8 @@ public:
   
   void SendStopMessage();
   
+  std::string deviceName;
+  
   ISVCDecoder*  pSVCDecoder;
   
   SDecodingParam decParam;

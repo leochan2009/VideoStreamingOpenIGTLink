@@ -51,6 +51,7 @@ VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
   this->waitSTTCommand = true;
   this->InitializationDone = false;
   this->serverPortNumber = -1;
+  this->deviceName = "";
   this->serverSocket = igtl::ServerSocket::New();;
   this->socket = igtl::Socket::New();;
   this->conditionVar = igtl::ConditionVariable::New();
@@ -79,10 +80,11 @@ int VideoStreamIGTLinkServer::StartServer ()
 
 int VideoStreamIGTLinkServer::ParseConfigForServer()
 {
-  string strTag[4];
   int iRet = 1;
-  
+  int arttributNum = 0;
+  std::string strTag[4];
   while (!cRdCfg.EndOfFile()) {
+    strTag->clear();
     long iRd = cRdCfg.ReadLine (&strTag[0]);
     if (iRd > 0) {
       if (strTag[0].empty())
@@ -93,15 +95,24 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
         {
           fprintf (stderr, "Invalid parameter for server port number should between 0 and 65525.");
           iRet = 1;
-          break;
+          arttributNum ++;
         }
         else
         {
           iRet = 0;
-          break;
         }
       }
+      if (strTag[0].compare ("DeviceName") == 0)
+      {
+        this->deviceName =strTag[1].c_str();
+        arttributNum ++;
+      }
     }
+    if (arttributNum ==2)
+    {
+      break;
+    }
+    
   }
   return iRet;
 }
@@ -157,7 +168,7 @@ void* ThreadFunctionServer(void* ptr)
         {
           headerMsg->InitPack();
           int rs = parentObj->socket->Receive(headerMsg->GetPackPointer(), headerMsg->GetPackSize());
-          if (rs == 0)
+          if (rs == 0) 
           {
             std::cerr << "Disconnecting the client." << std::endl;
             break;
@@ -308,7 +319,6 @@ bool VideoStreamIGTLinkServer::InitializeEncoderAndServer()
       iRet = 1;
       goto INSIDE_MEM_FREE;
     }
-    cRdCfg.~CReadConfig();
     cRdCfg.Openf (this->augments.c_str());// reset the file read pointer to the beginning.
     iRet = ParseConfigForServer();
     if (iRet) {
@@ -416,7 +426,7 @@ void VideoStreamIGTLinkServer::SendIGTLinkMessage()
 {
   igtl::VideoMessage::Pointer videoMsg;
   videoMsg = igtl::VideoMessage::New();
-  videoMsg->SetDeviceName("Video");
+  videoMsg->SetDeviceName(this->deviceName.c_str());
   int frameSize = pSrcPic->iPicWidth* pSrcPic->iPicHeight * 3 >> 1;
   if (this->useCompress)
   {
