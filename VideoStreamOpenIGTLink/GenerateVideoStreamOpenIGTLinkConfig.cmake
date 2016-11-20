@@ -18,6 +18,7 @@ SET(VideoStreamOpenIGTLink_INCLUDE_DIRS_CONFIG
 # Libraries.
 SET(VideoStreamOpenIGTLink_LIBRARIES_CONFIG ${VideoStreamOpenIGTLink_LIBRARIES})
 
+SET(OpenIGTLink_PROTOCOL_VERSION_CONFIG ${OpenIGTLink_PROTOCOL_VERSION})
 
 #-----------------------------------------------------------------------------
 # Configure OpenIGTLinkConfig.cmake for the build tree.

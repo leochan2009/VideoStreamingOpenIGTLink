@@ -4,5 +4,6 @@ SET(VideoStreamOpenIGTLink_INCLUDE_DIRS "@VideoStreamOpenIGTLink_INCLUDE_DIRS_CO
 # The VideoStreamOpenIGTLink library directories.
 SET(VideoStreamOpenIGTLink_LIBRARIES "@VideoStreamOpenIGTLink_LIBRARIES_CONFIG@")
 SET(VideoStreamOpenIGTLink_LIBRARY_DIRS "@VideoStreamOpenIGTLink_LIBRARY_DIRS_CONFIG@")
+SET(OpenIGTLink_PROTOCOL_VERSION "@OpenIGTLink_PROTOCOL_VERSION_CONFIG@")
 
 SET(VideoStreamOpenIGTLink_USE_FILE "@VideoStreamOpenIGTLink_USE_FILE@")
