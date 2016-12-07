@@ -23,6 +23,10 @@
 #include "igtlVideoMessage.h"
 #include "igtlServerSocket.h"
 #include "igtlMultiThreader.h"
+#include "igtlUDPClientSocket.h"
+#include "igtlMessageRTPWrapper.h"
+#include "igtlConditionVariable.h"
+
 
 #include "H264Decoder.h"
 
@@ -52,6 +56,8 @@ public:
   
   igtl::ClientSocket::Pointer socket;
   
+  igtl::UDPClientSocket::Pointer UDPSocket;
+  
   uint8_t * videoMessageBuffer;
   
   int   interval;
@@ -61,6 +67,8 @@ public:
   std::string  hostname;
   
   int port;
+  
+  igtl::MessageRTPWrapper::Pointer rtpWrapper;
   
   char codecType[IGTL_VIDEO_CODEC_NAME_SIZE];
   
@@ -82,7 +90,9 @@ public:
   
   int StreamLength;
   
-  int Run();
+  int RunOnTCPSocket();
+  
+  int RunOnUDPSocket();
   
   H264Decode* H264DecodeInstance;
   

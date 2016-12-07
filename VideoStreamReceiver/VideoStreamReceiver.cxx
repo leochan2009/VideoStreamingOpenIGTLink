@@ -21,6 +21,6 @@ int main (int argc, char** argv)
 {
   //char * cfgFileName = argv[1];
   VideoStreamIGTLinkReceiver receiver= VideoStreamIGTLinkReceiver();
-  receiver.Run();
+  receiver.RunOnUDPSocket();
   return 0;
 }

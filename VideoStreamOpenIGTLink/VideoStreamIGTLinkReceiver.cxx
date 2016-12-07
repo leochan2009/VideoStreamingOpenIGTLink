@@ -14,11 +14,70 @@
 
 #include "VideoStreamIGTLinkReceiver.h"
 
+struct ReadSocketAndPush
+{
+  igtl::MessageRTPWrapper::Pointer wrapper;
+  igtl::UDPClientSocket::Pointer clientSocket;
+};
+
+struct Wrapper
+{
+  igtl::MessageRTPWrapper::Pointer wrapper;
+};
+
+
+void* ThreadFunctionUnWrap(void* ptr)
+{
+  // Get thread information
+  igtl::MultiThreader::ThreadInfo* info =
+  static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
+  const char *trackingDeviceName = "LocalMac";
+  const char *deviceType = "Video";
+  Wrapper parentObj = *(static_cast<Wrapper*>(info->UserData));
+  while(1)
+  {
+    parentObj.wrapper->UnWrapPaketWithTypeAndName(deviceType, trackingDeviceName);
+    igtl::Sleep(5);
+  }
+}
+
+
+void* ThreadFunctionReadSocket(void* ptr)
+{
+  // Get thread information
+  igtl::MultiThreader::ThreadInfo* info =
+  static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
+  
+  ReadSocketAndPush parentObj = *(static_cast<ReadSocketAndPush*>(info->UserData));
+  unsigned char UDPPaket[RTP_PAYLOAD_LENGTH+RTP_HEADER_LENGTH];  while(1)
+  {
+    int totMsgLen = parentObj.clientSocket->ReadSocket(UDPPaket, RTP_PAYLOAD_LENGTH+RTP_HEADER_LENGTH);
+    if (totMsgLen>0)
+    {
+      parentObj.wrapper->PushDataIntoPaketBuffer(UDPPaket, totMsgLen);
+    }
+  }
+}
+
+int ReceiveVideoStreamData(igtl::VideoMessage::Pointer& videoMSG)
+{
+  // Deserialize the transform data
+  // If you want to skip CRC check, call Unpack() without argument.
+  int c = videoMSG->Unpack(1); // to do crc check fails, fix the error
+  
+  if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
+  {
+    return 1;
+  }
+  return 0;
+}
+
 VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver()
 {
   this->hostname = "10.238.129.102";
   this->deviceName = "";
-  this->port     = 18944;
+  this->port     = 18946;
+  this->rtpWrapper = igtl::MessageRTPWrapper::New();
   strncpy(this->codecType, "H264",4);
   this->useCompress      = true;
   
@@ -35,13 +94,14 @@ VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver()
   this->videoMessageBuffer=NULL;
   this->decodedFrame=NULL;
   socket = igtl::ClientSocket::New();
+  UDPSocket = igtl::UDPClientSocket::New();
   this->Height = 0;
   this->Width = 0;
   this->flipAtX = true;
   this->H264DecodeInstance = new H264Decode();
 }
 
-int VideoStreamIGTLinkReceiver::Run()
+int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
 {
   //------------------------------------------------------------
   // Establish Connection
@@ -97,6 +157,7 @@ int VideoStreamIGTLinkReceiver::Run()
       
       igtl::VideoMessage::Pointer videoMsg;
       videoMsg = igtl::VideoMessage::New();
+      videoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
       videoMsg->SetMessageHeader(headerMsg);
       videoMsg->AllocatePack(headerMsg->GetBodySizeToRead());
       
@@ -143,10 +204,77 @@ void VideoStreamIGTLinkReceiver::SendStopMessage()
   std::cerr << "Sending STP_VIDEO message....." << std::endl;
   igtl::StopVideoMessage::Pointer stopVideoMsg;
   stopVideoMsg = igtl::StopVideoMessage::New();
+  stopVideoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
   stopVideoMsg->SetDeviceName("TDataClient");
   stopVideoMsg->Pack();
   socket->Send(stopVideoMsg->GetPackPointer(), stopVideoMsg->GetPackSize());
 }
+
+int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
+{
+  //UDPSocket->JoinNetwork("226.0.0.1", port, 1);
+  igtl::ConditionVariable::Pointer conditionVar = igtl::ConditionVariable::New();
+  igtl::SimpleMutexLock* glock = igtl::SimpleMutexLock::New();
+  UDPSocket->JoinNetwork("127.0.0.1", port, 0); // join the local network for a client connection
+  //std::vector<ReorderBuffer> reorderBufferVec(10, ReorderBuffer();
+  //int loop = 0;
+  ReadSocketAndPush info;
+  info.wrapper = rtpWrapper;
+  info.clientSocket = UDPSocket;
+  
+  Wrapper infoWrapper;
+  infoWrapper.wrapper = rtpWrapper;
+  
+  igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
+  
+  threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionReadSocket, &info);
+  threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionUnWrap, &infoWrapper);
+  while(1)
+  {
+    if(rtpWrapper->unWrappedMessages.size())// to do: glock this session
+    {
+      igtl::VideoMessage::Pointer videoMultiPKTMSG = igtl::VideoMessage::New();
+      videoMultiPKTMSG->SetHeaderVersion(IGTL_HEADER_VERSION_2);
+      glock->Lock();
+      std::map<igtl_uint32, igtl::UnWrappedMessage*>::iterator it = rtpWrapper->unWrappedMessages.begin();
+      igtlUint8 * message = new igtlUint8[it->second->messageDataLength];
+      int MSGLength = it->second->messageDataLength;
+      memcpy(message, it->second->messagePackPointer, it->second->messageDataLength);
+      rtpWrapper->unWrappedMessages.erase(it);
+      //delete it->second;
+      glock->Unlock();
+      igtl::MessageHeader::Pointer header = igtl::MessageHeader::New();
+      header->InitPack();
+      memcpy(header->GetPackPointer(), message, IGTL_HEADER_SIZE);
+      header->Unpack();
+      videoMultiPKTMSG->SetMessageHeader(header);
+      videoMultiPKTMSG->AllocateBuffer();
+      if (MSGLength == videoMultiPKTMSG->GetPackSize())
+      {
+        memcpy(videoMultiPKTMSG->GetPackPointer(), message, MSGLength);
+        videoMultiPKTMSG->Unpack(0);
+        //ReceiveVideoStreamData(videoMultiPKTMSG);
+        this->SetWidth(videoMultiPKTMSG->GetWidth());
+        this->SetHeight(videoMultiPKTMSG->GetHeight());
+        int streamLength = videoMultiPKTMSG->GetBitStreamSize();
+        this->SetStreamLength(streamLength);
+        if (!(this->videoMessageBuffer==NULL))
+        {
+          delete[] this->videoMessageBuffer;
+        }
+        this->videoMessageBuffer = new uint8_t[streamLength];
+        memcpy(this->videoMessageBuffer, videoMultiPKTMSG->GetPackFragmentPointer(2), streamLength);
+        if (this->ProcessVideoStream(this->videoMessageBuffer)== 0) // To do, check if we need to get all the NALs
+        {
+          break;
+        }
+      }
+      delete message;
+    }
+  }
+  return 0;
+}
+
 
 void VideoStreamIGTLinkReceiver::SetWidth(int iWidth)
 {
