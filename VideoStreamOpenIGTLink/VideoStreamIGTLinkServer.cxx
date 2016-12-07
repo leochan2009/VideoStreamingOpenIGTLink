@@ -16,6 +16,8 @@
 
 void* ThreadFunctionServer(void* ptr);
 
+void* ThreadFunctionUDPServer(void* ptr);
+
 void UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx) {
  for (int i = 0; i < info.iLayerNum; ++i) {
  const SLayerBSInfo& layerInfo = info.sLayerInfo[i];
@@ -52,25 +54,42 @@ VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
   this->InitializationDone = false;
   this->serverPortNumber = -1;
   this->deviceName = "";
-  this->serverSocket = igtl::ServerSocket::New();;
+  this->serverSocket = igtl::ServerSocket::New();
+  this->serverUDPSocket = igtl::UDPServerSocket::New();
   this->socket = igtl::Socket::New();;
   this->conditionVar = igtl::ConditionVariable::New();
   this->glock = igtl::SimpleMutexLock::New();
+  this->rtpWrapper = igtl::MessageRTPWrapper::New();
 }
 
 int VideoStreamIGTLinkServer::StartServer ()
 {
   if (this->InitializationDone)
   {
-    igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
-    threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionServer, this);
-    this->glock->Lock();
-    while(!this->serverConnected)
+    if(this->transportMethod==VideoStreamIGTLinkServer::UseTCP)
     {
-      this->conditionVar->Wait(this->glock);
+      igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
+      threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionServer, this);
+      this->glock->Lock();
+      while(!this->serverConnected)
+      {
+        this->conditionVar->Wait(this->glock);
+      }
+      this->glock->Unlock();
+      return true;
     }
-    this->glock->Unlock();
-    return true;
+    else if (this->transportMethod == VideoStreamIGTLinkServer::UseUDP)
+    {
+      igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
+      threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionUDPServer, this);
+      this->glock->Lock();
+      while(!this->serverConnected)
+      {
+        this->conditionVar->Wait(this->glock);
+      }
+      this->glock->Unlock();
+      return true;
+    }
   }
   else
   {
@@ -107,6 +126,11 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
         this->deviceName =strTag[1].c_str();
         arttributNum ++;
       }
+      if (strTag[0].compare ("TransportMethod") == 0)
+      {
+        this->transportMethod = atoi(strTag[1].c_str());
+        arttributNum ++;
+      }
     }
     if (arttributNum ==2)
     {
@@ -125,6 +149,7 @@ void* ThreadFunctionServer(void* ptr)
     static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
 
   VideoStreamIGTLinkServer* parentObj = static_cast<VideoStreamIGTLinkServer*>(info->UserData);
+  int r = -1;
   if (parentObj->serverSocket.IsNotNull())
   {
     parentObj->serverSocket->CloseSocket();
@@ -132,8 +157,7 @@ void* ThreadFunctionServer(void* ptr)
   parentObj->serverSocket = NULL;
   parentObj->serverSocket = igtl::ServerSocket::New();
   
-  int r = parentObj->serverSocket->CreateServer(parentObj->serverPortNumber);
-  
+  r = parentObj->serverSocket->CreateServer(parentObj->serverPortNumber);
   if (r < 0)
   {
     std::cerr << "Cannot create a server socket." << std::endl;
@@ -261,6 +285,45 @@ void* ThreadFunctionServer(void* ptr)
   parentObj->glock->Unlock();
   parentObj->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
   parentObj->serverSocket = NULL;
+}
+
+
+
+void* ThreadFunctionUDPServer(void* ptr)
+{
+  //------------------------------------------------------------
+  // Get thread information
+  igtl::MultiThreader::ThreadInfo* info =
+  static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
+  
+  VideoStreamIGTLinkServer* parentObj = static_cast<VideoStreamIGTLinkServer*>(info->UserData);
+  int r = -1;
+  if (parentObj->serverUDPSocket.IsNotNull())
+  {
+    parentObj->serverUDPSocket->CloseSocket();
+  }
+  parentObj->serverUDPSocket = NULL;
+  parentObj->serverUDPSocket = igtl::UDPServerSocket::New();
+  
+  r = parentObj->serverUDPSocket->CreateUDPServer(parentObj->serverPortNumber);
+  if (r < 0)
+  {
+    std::cerr << "Cannot create a server socket." << std::endl;
+    exit(0);
+  }
+  
+  //------------------------------------------------------------
+  // Close connection (The example code never reaches to this section ...)
+  parentObj->serverUDPSocket->CloseSocket();
+  parentObj->glock->Lock();
+  if (parentObj->socket.IsNotNull())
+  {
+    parentObj->socket->CloseSocket();
+  }
+  parentObj->glock->Unlock();
+  parentObj->socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
+  parentObj->serverUDPSocket = NULL;
+  return NULL;
 }
 
 bool VideoStreamIGTLinkServer::CompareHash (const unsigned char* digest, const char* hashStr) {
@@ -424,62 +487,114 @@ INSIDE_MEM_FREE:
 
 void VideoStreamIGTLinkServer::SendIGTLinkMessage()
 {
-  igtl::VideoMessage::Pointer videoMsg;
-  videoMsg = igtl::VideoMessage::New();
-  videoMsg->SetDeviceName(this->deviceName.c_str());
-  int frameSize = pSrcPic->iPicWidth* pSrcPic->iPicHeight * 3 >> 1;
-  if (this->useCompress)
+  if(this->transportMethod == UseTCP)
   {
-    int frameSize = 0;
-    int iLayer = 0;
-    if (sFbi.iFrameSizeInBytes > 0)
+    igtl::VideoMessage::Pointer videoMsg;
+    videoMsg = igtl::VideoMessage::New();
+    videoMsg->SetDeviceName(this->deviceName.c_str());
+    int frameSize = pSrcPic->iPicWidth* pSrcPic->iPicHeight * 3 >> 1;
+    if (this->useCompress)
     {
-      videoMsg->SetBitStreamSize(sFbi.iFrameSizeInBytes);
+      int frameSize = 0;
+      int iLayer = 0;
+      if (sFbi.iFrameSizeInBytes > 0)
+      {
+        videoMsg->SetBitStreamSize(sFbi.iFrameSizeInBytes);
+        videoMsg->AllocateScalars();
+        videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
+        videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
+        videoMsg->SetWidth(pSrcPic->iPicWidth);
+        videoMsg->SetHeight(pSrcPic->iPicHeight);
+        while (iLayer < sFbi.iLayerNum) {
+          SLayerBSInfo* pLayerBsInfo = &sFbi.sLayerInfo[iLayer];
+          if (pLayerBsInfo != NULL) {
+            int iLayerSize = 0;
+            int iNalIdx = pLayerBsInfo->iNalCount - 1;
+            do {
+              iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
+              -- iNalIdx;
+            } while (iNalIdx >= 0);
+            frameSize += iLayerSize;
+            for (int i = 0; i < iLayerSize ; i++)
+            {
+              videoMsg->GetPackFragmentPointer(2)[frameSize-iLayerSize+i] = pLayerBsInfo->pBsBuf[i];
+            }
+          }
+          ++ iLayer;
+        }
+        videoMsg->Pack();
+      }
+    }
+    else
+    {
+      videoMsg->SetBitStreamSize(frameSize);
       videoMsg->AllocateScalars();
       videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
       videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
       videoMsg->SetWidth(pSrcPic->iPicWidth);
       videoMsg->SetHeight(pSrcPic->iPicHeight);
-      while (iLayer < sFbi.iLayerNum) {
-        SLayerBSInfo* pLayerBsInfo = &sFbi.sLayerInfo[iLayer];
-        if (pLayerBsInfo != NULL) {
-          int iLayerSize = 0;
-          int iNalIdx = pLayerBsInfo->iNalCount - 1;
-          do {
-            iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
-            -- iNalIdx;
-          } while (iNalIdx >= 0);
-          frameSize += iLayerSize;
-          for (int i = 0; i < iLayerSize ; i++)
-          {
-            videoMsg->GetPackFragmentPointer(2)[frameSize-iLayerSize+i] = pLayerBsInfo->pBsBuf[i];
-          }
-        }
-        ++ iLayer;
-      }
+      videoMsg->m_Frame= pSrcPic->pData[0];
       videoMsg->Pack();
     }
-  }
-  else
-  {
-    videoMsg->SetBitStreamSize(frameSize);
-    videoMsg->AllocateScalars();
-    videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
-    videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
-    videoMsg->SetWidth(pSrcPic->iPicWidth);
-    videoMsg->SetHeight(pSrcPic->iPicHeight);
-    videoMsg->m_Frame= pSrcPic->pData[0];
-    videoMsg->Pack();
-  }
-  this->glock->Lock();
-  if(this->socket)
-  {
-    for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
+    this->glock->Lock();
+    if(this->socket)
     {
-      this->socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
+      for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
+      {
+        this->socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
+      }
     }
+    this->glock->Unlock();
   }
-  this->glock->Unlock();
+  else if(this->transportMethod == UseUDP)
+  {
+    igtl::VideoMessage::Pointer videoMsg;
+    videoMsg = igtl::VideoMessage::New();
+    videoMsg->SetDeviceName(this->deviceName.c_str());
+    if (this->useCompress)
+    {
+      int iLayer = 0;
+      if (sFbi.iFrameSizeInBytes > 0)
+      {
+        videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
+        videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
+        videoMsg->SetWidth(pSrcPic->iPicWidth);
+        videoMsg->SetHeight(pSrcPic->iPicHeight);
+        while (iLayer < sFbi.iLayerNum) {
+          SLayerBSInfo* pLayerBsInfo = &sFbi.sLayerInfo[iLayer];
+          if (pLayerBsInfo != NULL) {
+            int iLayerSize = 0;
+            for (int iNalIdx = 0 ; iNalIdx < pLayerBsInfo->iNalCount; iNalIdx ++)
+            {
+              int nalLength = pLayerBsInfo->pNalLengthInByte[iNalIdx];
+              videoMsg->SetBitStreamSize(nalLength);
+              videoMsg->AllocateScalars();
+              memcpy(videoMsg->GetPackFragmentPointer(2), &pLayerBsInfo->pBsBuf[iLayerSize], nalLength);
+              videoMsg->Pack();
+              int status = rtpWrapper->WrapMessageAndSend(this->serverUDPSocket, (igtlUint8 *)videoMsg->GetPackPointer(), videoMsg->GetPackSize());
+              iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
+            }
+          }
+          ++ iLayer;
+        }
+        videoMsg->Pack();
+      }
+    }
+    else
+    {
+      // to do uncompressed data using UDP
+    }
+    this->glock->Lock();
+    if(this->socket)
+    {
+      for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
+      {
+        this->socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
+      }
+    }
+    this->glock->Unlock();
+  }
+  
   igtl::Sleep(this->interval);
 }
 

@@ -21,8 +21,10 @@
 #include "igtlMessageHeader.h"
 #include "igtlVideoMessage.h"
 #include "igtlServerSocket.h"
+#include "igtlUDPServerSocket.h"
 #include "igtlMultiThreader.h"
 #include "igtlConditionVariable.h"
+#include "igtlMessageRTPWrapper.h"
 #include "codec_def.h"
 #include "codec_app_def.h"
 #include "read_config.h"
@@ -90,6 +92,13 @@ public:
   
   int ParseConfigForServer();
   
+  enum TransportMethod
+  {
+    UseTCP,
+    UseUDP
+  };
+  
+  
   //void* ThreadFunctionServer(void*);
   
   static bool CompareHash (const unsigned char* digest, const char* hashStr);
@@ -99,6 +108,10 @@ public:
   igtl::Socket::Pointer socket;
   
   igtl::ServerSocket::Pointer serverSocket;
+  
+  igtl::UDPServerSocket::Pointer serverUDPSocket;
+  
+  igtl::MessageRTPWrapper::Pointer rtpWrapper;
   
   ISVCEncoder*  pSVCEncoder;
   
@@ -134,6 +147,8 @@ public:
   bool waitSTTCommand;
   
   std::string deviceName;
+  
+  int transportMethod;
   
   bool InitializationDone;
   
