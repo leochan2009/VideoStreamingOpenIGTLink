@@ -121,6 +121,34 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
           iRet = 0;
         }
       }
+      if (strTag[0].compare ("ClientIPAddress") == 0) {
+        this->clientIPAddress = new char[IPAddressStrLen];
+        memcpy(this->clientIPAddress, strTag[1].c_str(), IPAddressStrLen);
+        if(inet_addr(this->clientIPAddress))
+        {
+          iRet = 0;
+        }
+        else
+        {
+          fprintf (stderr, "Invalid parameter for IP address");
+          iRet = 1;
+          arttributNum ++;
+        }
+      }
+      if (strTag[0].compare ("ClientPortNumber") == 0) {
+        this->clientPortNumber = atoi (strTag[1].c_str());
+        if(this->clientPortNumber<0 || this->clientPortNumber>65535)
+        {
+          fprintf (stderr, "Invalid parameter for server port number should between 0 and 65525.");
+          iRet = 1;
+          arttributNum ++;
+        }
+        else
+        {
+          iRet = 0;
+        }
+          
+      }
       if (strTag[0].compare ("DeviceName") == 0)
       {
         this->deviceName =strTag[1].c_str();
@@ -132,11 +160,22 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
         arttributNum ++;
       }
     }
-    if (arttributNum ==3) // only parse the first three arttribute
+    if (arttributNum ==20) // only parse the first 20 arttribute
     {
       break;
     }
-    
+  }
+  if (this->transportMethod == 1 )
+  {
+    if (this->clientIPAddress && this->clientPortNumber)
+    {
+      this->serverUDPSocket->AddClient(this->clientIPAddress, this->clientPortNumber, 0);
+      this->interval = 100;
+    }
+    else
+    {
+      iRet = 1;
+    }
   }
   return iRet;
 }
@@ -154,9 +193,6 @@ void* ThreadFunctionServer(void* ptr)
   {
     parentObj->serverSocket->CloseSocket();
   }
-  parentObj->serverSocket = NULL;
-  parentObj->serverSocket = igtl::ServerSocket::New();
-  
   r = parentObj->serverSocket->CreateServer(parentObj->serverPortNumber);
   if (r < 0)
   {
@@ -302,17 +338,12 @@ void* ThreadFunctionUDPServer(void* ptr)
   {
     parentObj->serverUDPSocket->CloseSocket();
   }
-  parentObj->serverUDPSocket = NULL;
-  parentObj->serverUDPSocket = igtl::UDPServerSocket::New();
-  
   r = parentObj->serverUDPSocket->CreateUDPServer(parentObj->serverPortNumber);
   if (r < 0)
   {
     std::cerr << "Cannot create a server socket." << std::endl;
     exit(0);
   }
-  parentObj->serverUDPSocket->AddClient("127.0.0.1", 18944, 0);
-  parentObj->interval = 100;
   strncpy(parentObj->codecName, "H264", IGTL_VIDEO_CODEC_NAME_SIZE);
   parentObj->serverConnected     = true;
   parentObj->conditionVar->Signal();

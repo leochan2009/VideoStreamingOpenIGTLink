@@ -140,6 +140,10 @@ public:
   
   int   serverPortNumber;
   
+  char* clientIPAddress;
+  
+  int   clientPortNumber;
+  
   int argc;
   
   std::string augments;
