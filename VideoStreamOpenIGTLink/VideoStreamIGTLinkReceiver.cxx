@@ -76,7 +76,6 @@ int ReceiveVideoStreamData(igtl::VideoMessage::Pointer& videoMSG)
 
 VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver(char *argv[])
 {
-  this->hostname = "10.238.129.102";
   this->deviceName = "";
   this->augments     = argv[1];
   this->rtpWrapper = igtl::MessageRTPWrapper::New();
@@ -108,7 +107,7 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
   //------------------------------------------------------------
   // Establish Connection
   
-  int r = socket->ConnectToServer(hostname.c_str(), port);
+  int r = socket->ConnectToServer(TCPServerIPAddress, TCPServerPort);
   
   if (r != 0)
   {
@@ -121,13 +120,15 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
   std::cerr << "Sending STT_VIDEO message....." << std::endl;
   igtl::StartVideoDataMessage::Pointer startVideoMsg;
   startVideoMsg = igtl::StartVideoDataMessage::New();
-  startVideoMsg->SetDeviceName("MacCamera");
+  startVideoMsg->AllocatePack();
+  startVideoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
+  startVideoMsg->SetDeviceName("MacCamera5");
   startVideoMsg->SetCodecType(codecType);
   startVideoMsg->SetTimeInterval(interval);
   startVideoMsg->SetUseCompress(useCompress);
   startVideoMsg->Pack();
   socket->Send(startVideoMsg->GetPackPointer(), startVideoMsg->GetPackSize());
-  std::string outputFileName = "outputDecodedVideo.yuv";
+  std::string outputFileName = "outputDecodedVideoTCP.yuv";
   while (1)
   {
     //------------------------------------------------------------
@@ -152,7 +153,7 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
     }
     
     headerMsg->Unpack();
-    if (strcmp(headerMsg->GetDeviceName(), "Video") == 0)
+    if (strcmp(headerMsg->GetDeviceName(), this->deviceName.c_str()) == 0)
     {
       //------------------------------------------------------------
       // Allocate Video Message Class
@@ -161,8 +162,7 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
       videoMsg = igtl::VideoMessage::New();
       videoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
       videoMsg->SetMessageHeader(headerMsg);
-      videoMsg->AllocatePack(headerMsg->GetBodySizeToRead());
-      
+      videoMsg->AllocateBuffer();
       // Receive body from the socket
       socket->Receive(videoMsg->GetPackBodyPointer(), videoMsg->GetPackBodySize());
       
@@ -221,7 +221,7 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
   //UDPSocket->JoinNetwork("127.0.0.1", port, 0); // join the local network for a client connection
   //std::vector<ReorderBuffer> reorderBufferVec(10, ReorderBuffer();
   //int loop = 0;
-  UDPSocket->JoinNetwork("127.0.0.1", port, 0);
+  UDPSocket->JoinNetwork("127.0.0.1", UDPClientPort, 0);
   ReadSocketAndPush info;
   info.wrapper = rtpWrapper;
   info.clientSocket = UDPSocket;
@@ -313,18 +313,46 @@ int VideoStreamIGTLinkReceiver::ParseConfigForClient()
     if (iRd > 0) {
       if (strTag[0].empty())
         continue;
-      if (strTag[0].compare ("ClientPortNumber") == 0) {
-        this->port = atoi (strTag[1].c_str());
-        if(this->port<0 || this->port>65535)
+      if (strTag[0].compare ("TCPServerPortNumber") == 0) {
+        this->TCPServerPort = atoi (strTag[1].c_str());
+        if(this->TCPServerPort<0 || this->TCPServerPort>65535)
         {
           fprintf (stderr, "Invalid parameter for server port number should between 0 and 65525.");
-          iRet = -1;
+          iRet = 1;
           arttributNum ++;
         }
         else
         {
           iRet = 0;
         }
+      }
+      if (strTag[0].compare ("TCPServerIPAddress") == 0) {
+        this->TCPServerIPAddress = new char[IP4AddressStrLen];
+        memcpy(this->TCPServerIPAddress, strTag[1].c_str(), IP4AddressStrLen);
+        if(inet_addr(this->TCPServerIPAddress))
+        {
+          iRet = 0;
+        }
+        else
+        {
+          fprintf (stderr, "Invalid parameter for IP address");
+          iRet = 1;
+          arttributNum ++;
+        }
+      }
+      if (strTag[0].compare ("UDPClientPortNumber") == 0) {
+        this->UDPClientPort = atoi (strTag[1].c_str());
+        if(this->UDPClientPort<0 || this->UDPClientPort>65535)
+        {
+          fprintf (stderr, "Invalid parameter for server port number should between 0 and 65525.");
+          iRet = 1;
+          arttributNum ++;
+        }
+        else
+        {
+          iRet = 0;
+        }
+        
       }
       if (strTag[0].compare ("DeviceName") == 0)
       {
@@ -337,7 +365,7 @@ int VideoStreamIGTLinkReceiver::ParseConfigForClient()
         arttributNum ++;
       }
     }
-    if (arttributNum ==3)
+    if (arttributNum ==20)
     {
       break;
     }

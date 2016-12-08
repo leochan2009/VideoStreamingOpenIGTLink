@@ -11,6 +11,16 @@
 
 =========================================================================*/
 
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <windows.h>
+// need link with Ws2_32.lib
+#pragma comment(lib, "Ws2_32.lib")
+#else
+#include <arpa/inet.h>
+#endif
+
 #include <fstream>
 #include <cstring>
 #include <stdlib.h>

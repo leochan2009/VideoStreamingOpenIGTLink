@@ -29,6 +29,15 @@ int main (int argc, char** argv)
   }
   VideoStreamIGTLinkReceiver receiver= VideoStreamIGTLinkReceiver(argv);
   if (receiver.InitializeClient())
-    receiver.RunOnUDPSocket();
+  {
+    if (receiver.transportMethod == 0)
+    {
+      receiver.RunOnTCPSocket();
+    }
+    else if(receiver.transportMethod == 1)
+    {
+      receiver.RunOnUDPSocket();
+    }
+  }
   return 0;
 }

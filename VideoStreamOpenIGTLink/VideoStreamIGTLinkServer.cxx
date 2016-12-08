@@ -122,8 +122,8 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
         }
       }
       if (strTag[0].compare ("ClientIPAddress") == 0) {
-        this->clientIPAddress = new char[IPAddressStrLen];
-        memcpy(this->clientIPAddress, strTag[1].c_str(), IPAddressStrLen);
+        this->clientIPAddress = new char[IP4AddressStrLen];
+        memcpy(this->clientIPAddress, strTag[1].c_str(), IP4AddressStrLen);
         if(inet_addr(this->clientIPAddress))
         {
           iRet = 0;
@@ -542,8 +542,8 @@ void VideoStreamIGTLinkServer::SendIGTLinkMessage()
   if(this->transportMethod == UseTCP)
   {
     igtl::VideoMessage::Pointer videoMsg;
-    videoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
     videoMsg = igtl::VideoMessage::New();
+    videoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
     videoMsg->SetDeviceName(this->deviceName.c_str());
     int frameSize = pSrcPic->iPicWidth* pSrcPic->iPicHeight * 3 >> 1;
     if (this->useCompress)
@@ -592,10 +592,7 @@ void VideoStreamIGTLinkServer::SendIGTLinkMessage()
     this->glock->Lock();
     if(this->socket)
     {
-      for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
-      {
-        this->socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
-      }
+      this->socket->Send(videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
     }
     this->glock->Unlock();
   }
