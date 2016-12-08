@@ -23,6 +23,7 @@ struct ReadSocketAndPush
 struct Wrapper
 {
   igtl::MessageRTPWrapper::Pointer wrapper;
+  VideoStreamIGTLinkReceiver* receiver;
 };
 
 
@@ -31,12 +32,12 @@ void* ThreadFunctionUnWrap(void* ptr)
   // Get thread information
   igtl::MultiThreader::ThreadInfo* info =
   static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
-  const char *trackingDeviceName = "LocalMac";
   const char *deviceType = "Video";
   Wrapper parentObj = *(static_cast<Wrapper*>(info->UserData));
+  const char * videoDeviceName = parentObj.receiver->deviceName.c_str();
   while(1)
   {
-    parentObj.wrapper->UnWrapPaketWithTypeAndName(deviceType, trackingDeviceName);
+    parentObj.wrapper->UnWrapPaketWithTypeAndName(deviceType, videoDeviceName);
     igtl::Sleep(5);
   }
 }
@@ -49,7 +50,8 @@ void* ThreadFunctionReadSocket(void* ptr)
   static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
   
   ReadSocketAndPush parentObj = *(static_cast<ReadSocketAndPush*>(info->UserData));
-  unsigned char UDPPaket[RTP_PAYLOAD_LENGTH+RTP_HEADER_LENGTH];  while(1)
+  unsigned char UDPPaket[RTP_PAYLOAD_LENGTH+RTP_HEADER_LENGTH];
+  while(1)
   {
     int totMsgLen = parentObj.clientSocket->ReadSocket(UDPPaket, RTP_PAYLOAD_LENGTH+RTP_HEADER_LENGTH);
     if (totMsgLen>0)
@@ -72,11 +74,11 @@ int ReceiveVideoStreamData(igtl::VideoMessage::Pointer& videoMSG)
   return 0;
 }
 
-VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver()
+VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver(char *argv[])
 {
   this->hostname = "10.238.129.102";
   this->deviceName = "";
-  this->port     = 18946;
+  this->augments     = argv[1];
   this->rtpWrapper = igtl::MessageRTPWrapper::New();
   strncpy(this->codecType, "H264",4);
   this->useCompress      = true;
@@ -119,7 +121,7 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
   std::cerr << "Sending STT_VIDEO message....." << std::endl;
   igtl::StartVideoDataMessage::Pointer startVideoMsg;
   startVideoMsg = igtl::StartVideoDataMessage::New();
-  startVideoMsg->SetDeviceName("Video Client");
+  startVideoMsg->SetDeviceName("MacCamera");
   startVideoMsg->SetCodecType(codecType);
   startVideoMsg->SetTimeInterval(interval);
   startVideoMsg->SetUseCompress(useCompress);
@@ -197,6 +199,7 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
   }
   WelsDestroyDecoder(this->pSVCDecoder);
 }
+
 void VideoStreamIGTLinkReceiver::SendStopMessage()
 {
   //------------------------------------------------------------
@@ -215,15 +218,17 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
   //UDPSocket->JoinNetwork("226.0.0.1", port, 1);
   igtl::ConditionVariable::Pointer conditionVar = igtl::ConditionVariable::New();
   igtl::SimpleMutexLock* glock = igtl::SimpleMutexLock::New();
-  UDPSocket->JoinNetwork("127.0.0.1", port, 0); // join the local network for a client connection
+  //UDPSocket->JoinNetwork("127.0.0.1", port, 0); // join the local network for a client connection
   //std::vector<ReorderBuffer> reorderBufferVec(10, ReorderBuffer();
   //int loop = 0;
+  UDPSocket->JoinNetwork("127.0.0.1", port, 0);
   ReadSocketAndPush info;
   info.wrapper = rtpWrapper;
   info.clientSocket = UDPSocket;
   
   Wrapper infoWrapper;
   infoWrapper.wrapper = rtpWrapper;
+  infoWrapper.receiver = this;
   
   igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
   
@@ -275,6 +280,71 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
   return 0;
 }
 
+bool VideoStreamIGTLinkReceiver::InitializeClient()
+{
+  // if configure file exit, reading configure file firstly
+  cRdCfg.Openf (this->augments.c_str());// to do get the first augments from this->augments.
+  if (cRdCfg.ExistFile())
+  {
+    cRdCfg.Openf (this->augments.c_str());// reset the file read pointer to the beginning.
+    int iRet = ParseConfigForClient();
+    if (iRet == -1) {
+      fprintf (stderr, "parse client parameter config file failed.\n");
+      return false;
+    }
+    return true;
+  }
+  else
+  {
+    fprintf (stderr, "Specified file: %s not exist, maybe invalid path or parameter settting.\n",
+             cRdCfg.GetFileName().c_str());
+    return false;
+  }
+}
+
+int VideoStreamIGTLinkReceiver::ParseConfigForClient()
+{
+  int iRet = 1;
+  int arttributNum = 0;
+  std::string strTag[4];
+  while (!cRdCfg.EndOfFile()) {
+    strTag->clear();
+    long iRd = cRdCfg.ReadLine (&strTag[0]);
+    if (iRd > 0) {
+      if (strTag[0].empty())
+        continue;
+      if (strTag[0].compare ("ClientPortNumber") == 0) {
+        this->port = atoi (strTag[1].c_str());
+        if(this->port<0 || this->port>65535)
+        {
+          fprintf (stderr, "Invalid parameter for server port number should between 0 and 65525.");
+          iRet = -1;
+          arttributNum ++;
+        }
+        else
+        {
+          iRet = 0;
+        }
+      }
+      if (strTag[0].compare ("DeviceName") == 0)
+      {
+        this->deviceName =strTag[1].c_str();
+        arttributNum ++;
+      }
+      if (strTag[0].compare ("TransportMethod") == 0)
+      {
+        this->transportMethod = atoi(strTag[1].c_str());
+        arttributNum ++;
+      }
+    }
+    if (arttributNum ==3)
+    {
+      break;
+    }
+    
+  }
+  return iRet;
+}
 
 void VideoStreamIGTLinkReceiver::SetWidth(int iWidth)
 {

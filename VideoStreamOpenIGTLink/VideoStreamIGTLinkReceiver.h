@@ -26,6 +26,7 @@
 #include "igtlUDPClientSocket.h"
 #include "igtlMessageRTPWrapper.h"
 #include "igtlConditionVariable.h"
+#include "read_config.h"
 
 
 #include "H264Decoder.h"
@@ -33,14 +34,20 @@
 class VideoStreamIGTLinkReceiver
 {
 public:
-  VideoStreamIGTLinkReceiver();
+  VideoStreamIGTLinkReceiver(char *argv[]);
   ~VideoStreamIGTLinkReceiver(){};
   
   int ProcessVideoStream(uint8_t* bitStream);
   
+  bool InitializeClient();
+  
   void SendStopMessage();
   
+  int ParseConfigForClient();
+  
   std::string deviceName;
+  
+  int transportMethod;
   
   ISVCDecoder*  pSVCDecoder;
   
@@ -65,6 +72,8 @@ public:
   bool  useCompress;
   
   std::string  hostname;
+  
+  CReadConfig cRdCfg;
   
   int port;
   

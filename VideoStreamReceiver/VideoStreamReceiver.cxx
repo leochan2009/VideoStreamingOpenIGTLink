@@ -20,7 +20,15 @@ int main (int argc, char** argv)
 #endif
 {
   //char * cfgFileName = argv[1];
-  VideoStreamIGTLinkReceiver receiver= VideoStreamIGTLinkReceiver();
-  receiver.RunOnUDPSocket();
+  if (argc != 2) // check number of arguments
+  {
+    // If not correct, print usage
+    std::cerr << "Usage: " << argv[0] << " <configurationfile>"    << std::endl;
+    std::cerr << "    <configurationfile> : file name "  << std::endl;
+    exit(0);
+  }
+  VideoStreamIGTLinkReceiver receiver= VideoStreamIGTLinkReceiver(argv);
+  if (receiver.InitializeClient())
+    receiver.RunOnUDPSocket();
   return 0;
 }

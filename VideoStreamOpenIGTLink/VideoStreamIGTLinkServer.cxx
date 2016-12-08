@@ -29,7 +29,7 @@ void UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx) {
  }
 }
 
-VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
+VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(char *argv[])
 {
   this->pSVCEncoder = NULL;
   memset (&sFbi, 0, sizeof (SFrameBSInfo));
@@ -48,7 +48,6 @@ VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(int argc, char *argv[])
   signal (SIGINT, SigIntHandler);
   
   this->serverConnected = false;
-  this->argc = argc;
   this->augments = std::string(argv[1]);
   this->waitSTTCommand = true;
   this->InitializationDone = false;
@@ -95,6 +94,7 @@ int VideoStreamIGTLinkServer::StartServer ()
   {
     return false;
   }
+  return false;
 }
 
 int VideoStreamIGTLinkServer::ParseConfigForServer()
@@ -132,7 +132,7 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
         arttributNum ++;
       }
     }
-    if (arttributNum ==2)
+    if (arttributNum ==3) // only parse the first three arttribute
     {
       break;
     }
@@ -311,7 +311,7 @@ void* ThreadFunctionUDPServer(void* ptr)
     std::cerr << "Cannot create a server socket." << std::endl;
     exit(0);
   }
-  parentObj->serverUDPSocket->AddClient("127.0.0.1", 18946, 0);
+  parentObj->serverUDPSocket->AddClient("127.0.0.1", 18944, 0);
   parentObj->interval = 100;
   strncpy(parentObj->codecName, "H264", IGTL_VIDEO_CODEC_NAME_SIZE);
   parentObj->serverConnected     = true;

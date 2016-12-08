@@ -36,7 +36,7 @@ class ISVCEncoder;
 class VideoStreamIGTLinkServer
 {
 public:
-  VideoStreamIGTLinkServer(int argc, char *argv[]);
+  VideoStreamIGTLinkServer(char *argv[]);
   ~VideoStreamIGTLinkServer(){};
   
   /**
