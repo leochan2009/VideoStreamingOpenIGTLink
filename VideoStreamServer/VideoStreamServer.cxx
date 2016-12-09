@@ -32,9 +32,20 @@ int main (int argc, char** argv)
   server.StartServer();
   while(1)
   {
-    if(server.transportMethod==0)
+    if(server.useCompress == 1)
     {
-      if(server.GetServerConnectStatus())
+      if(server.transportMethod==server.UseTCP)
+      {
+        if(server.GetServerConnectStatus())
+        {
+          if (!server.GetInitializationStatus())
+          {
+            server.InitializeEncoderAndServer();
+          }
+          server.EncodeFile();
+        }
+      }
+      else if (server.transportMethod==server.UseUDP)
       {
         if (!server.GetInitializationStatus())
         {
@@ -43,13 +54,28 @@ int main (int argc, char** argv)
         server.EncodeFile();
       }
     }
-    else if (server.transportMethod==1)
+    else
     {
-      if (!server.GetInitializationStatus())
+      if(server.transportMethod==server.UseTCP)
       {
-        server.InitializeEncoderAndServer();
+        if(server.GetServerConnectStatus())
+        {
+          if (!server.GetInitializationStatus())
+          {
+            server.InitializeEncoderAndServer();
+          }
+          server.SendOriginalData();
+        }
       }
-      server.EncodeFile();
+      else if (server.transportMethod==server.UseUDP)
+      {
+        if (!server.GetInitializationStatus())
+        {
+          server.InitializeEncoderAndServer();
+        }
+        server.SendOriginalData();
+      }
+      
     }
   }
   return 0;

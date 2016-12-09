@@ -35,6 +35,7 @@
 #include "igtlMultiThreader.h"
 #include "igtlConditionVariable.h"
 #include "igtlMessageRTPWrapper.h"
+#include "igtlTimeStamp.h"
 #include "codec_def.h"
 #include "codec_app_def.h"
 #include "read_config.h"
@@ -73,7 +74,12 @@ public:
   /**
    Pack the encoded frame into a OpenIGTLink message and send the message to a client.
    */
-  void SendIGTLinkMessage();
+  void SendCompressedData();
+  
+  /**
+   Pack the original frame into a OpenIGTLink message and send the message to a client.
+   */
+  void SendOriginalData();
   
   /**
    Set the server to wait for STT command or just send the bitstream when connection is setup.
@@ -136,6 +142,10 @@ public:
   
   SSourcePicture* pSrcPic;
   
+  igtlUint64 encodeStartTime;
+  
+  igtlUint64 encodeEndTime;
+  
   igtl::ConditionVariable::Pointer conditionVar;
   
   int videoFrameType;
@@ -165,5 +175,7 @@ public:
   int transportMethod;
   
   bool InitializationDone;
+  
+  igtl::TimeStamp::Pointer ServerTimer;
   
 };

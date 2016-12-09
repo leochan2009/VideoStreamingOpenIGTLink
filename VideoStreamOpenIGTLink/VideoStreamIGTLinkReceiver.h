@@ -35,6 +35,7 @@
 #include "igtlUDPClientSocket.h"
 #include "igtlMessageRTPWrapper.h"
 #include "igtlConditionVariable.h"
+#include "igtlTimeStamp.h"
 #include "read_config.h"
 #include "H264Decoder.h"
 
@@ -117,5 +118,7 @@ public:
   int YUV420ToRGBConversion(uint8_t *RGBFrame, uint8_t * YUV420Frame, int iHeight, int iWidth);
   
   bool flipAtX;
+  
+  igtl::TimeStamp::Pointer ReceiverTimer;
 
 };

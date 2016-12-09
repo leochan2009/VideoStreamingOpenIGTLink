@@ -61,19 +61,6 @@ void* ThreadFunctionReadSocket(void* ptr)
   }
 }
 
-int ReceiveVideoStreamData(igtl::VideoMessage::Pointer& videoMSG)
-{
-  // Deserialize the transform data
-  // If you want to skip CRC check, call Unpack() without argument.
-  int c = videoMSG->Unpack(1); // to do crc check fails, fix the error
-  
-  if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
-  {
-    return 1;
-  }
-  return 0;
-}
-
 VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver(char *argv[])
 {
   this->deviceName = "";
@@ -100,6 +87,7 @@ VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver(char *argv[])
   this->Width = 0;
   this->flipAtX = true;
   this->H264DecodeInstance = new H264Decode();
+  ReceiverTimer = igtl::TimeStamp::New();
 }
 
 int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
@@ -258,7 +246,6 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
       {
         memcpy(videoMultiPKTMSG->GetPackPointer(), message, MSGLength);
         videoMultiPKTMSG->Unpack(0);
-        //ReceiveVideoStreamData(videoMultiPKTMSG);
         this->SetWidth(videoMultiPKTMSG->GetWidth());
         this->SetHeight(videoMultiPKTMSG->GetHeight());
         int streamLength = videoMultiPKTMSG->GetBitStreamSize();
@@ -364,6 +351,11 @@ int VideoStreamIGTLinkReceiver::ParseConfigForClient()
         this->transportMethod = atoi(strTag[1].c_str());
         arttributNum ++;
       }
+      if (strTag[0].compare ("UseCompress") == 0)
+      {
+        this->useCompress = atoi(strTag[1].c_str());
+        arttributNum ++;
+      }
     }
     if (arttributNum ==20)
     {
@@ -411,6 +403,7 @@ int VideoStreamIGTLinkReceiver::ProcessVideoStream(uint8_t* bitStream)
     H264DecodeInstance->DecodeSingleFrame(this->pSVCDecoder, bitStream, this->decodedFrame, kpOuputFileName, Width, Height, StreamLength, pOptionFileName);
     if (this->decodedFrame)
     {
+      ReceiverTimer->GetTime();
       return 1;
     }
     return 0;
