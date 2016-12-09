@@ -232,7 +232,6 @@ void H264Decode::DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264
       ComposeByteSteam(pData, sDstBufInfo, outputByteStream, iWidth,iHeight);
       iWidth  = sDstBufInfo.UsrData.sSystemBuffer.iWidth;
       iHeight = sDstBufInfo.UsrData.sSystemBuffer.iHeight;
-      std::vector<unsigned char> test(iWidth*iHeight*3/2,0);
       if (pOptionFile != NULL) {
         if (iWidth != iLastWidth && iHeight != iLastHeight) {
           fwrite (&iFrameCount, sizeof (iFrameCount), 1, pOptionFile);

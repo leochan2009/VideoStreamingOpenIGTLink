@@ -41,6 +41,7 @@
 #include "read_config.h"
 #include "wels_const.h"
 #include "welsencUtil.h"
+#include "../EvaluationTool.h"
 
 class ISVCEncoder;
 
@@ -177,5 +178,8 @@ public:
   bool InitializationDone;
   
   igtl::TimeStamp::Pointer ServerTimer;
+  
+  EvaluationTool* evalTool;
+  
   
 };

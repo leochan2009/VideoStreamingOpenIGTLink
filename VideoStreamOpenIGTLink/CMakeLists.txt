@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 project( VideoStreamOpenIGTLink )
 
 get_filename_component(PARENT_DIR ${CMAKE_CURRENT_BINARY_DIR} PATH)
+get_filename_component(PARENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} PATH)
 set(CMAKE_PREFIX_PATH	"${PARENT_DIR}/OpenIGTLink-build")	
 find_package(OpenIGTLink REQUIRED)
 include(${OpenIGTLink_USE_FILE})
@@ -19,8 +20,8 @@ INCLUDE (${VideoStreamOpenIGTLink_SOURCE_DIR}/GenerateVideoStreamOpenIGTLinkConf
 
 #Add OpenH264 directly to our build.
 #add_subdirectory(${PARENT_DIR}/Testing/OpenH264)
-SET(VideoStreamOpenIGTLink_SOURCES ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkServer.cxx ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkReceiver.cxx ${PARENT_DIR}/OpenH264/test/api/sha1.c H264Decoder.cpp ${PARENT_DIR}/OpenH264/codec/console/common/src/read_config.cpp)
-SET(VideoStreamOpenIGTLink_INCLUDES ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkServer.h ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkReceiver.h ${PARENT_DIR}/OpenH264/test/sha1.h H264Decoder.h ${PARENT_DIR}/OpenH264/codec/console/common/inc/read_config.h)
+SET(VideoStreamOpenIGTLink_SOURCES ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkServer.cxx ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkReceiver.cxx ${PARENT_SOURCE_DIR}/EvaluationTool.cpp ${PARENT_DIR}/OpenH264/test/api/sha1.c H264Decoder.cpp ${PARENT_DIR}/OpenH264/codec/console/common/src/read_config.cpp)
+SET(VideoStreamOpenIGTLink_INCLUDES ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkServer.h ${VideoStreamOpenIGTLink_SOURCE_DIR}/VideoStreamIGTLinkReceiver.h ${PARENT_SOURCE_DIR}/EvaluationTool.h ${PARENT_DIR}/OpenH264/test/sha1.h H264Decoder.h ${PARENT_DIR}/OpenH264/codec/console/common/inc/read_config.h)
 message("${OpenIGTLink_INCLUDE_DIRS}")
 SET(VideoStreamOpenIGTLink_INCLUDE_DIRS
 	${VideoStreamOpenIGTLink_INCLUDE_DIRS}

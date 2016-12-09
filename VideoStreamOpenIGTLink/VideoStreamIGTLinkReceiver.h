@@ -38,6 +38,7 @@
 #include "igtlTimeStamp.h"
 #include "read_config.h"
 #include "H264Decoder.h"
+#include "../EvaluationTool.h"
 
 class VideoStreamIGTLinkReceiver
 {
@@ -119,6 +120,12 @@ public:
   
   bool flipAtX;
   
-  igtl::TimeStamp::Pointer ReceiverTimer;
+  igtl::TimeStamp::Pointer ReceiverTimerDecodeThread;
+  
+  igtl::TimeStamp::Pointer ReceiverTimerPaketThread;
+  
+  EvaluationTool* evalToolPaketThread;
+  
+  EvaluationTool* evalToolDecodeThread;
 
 };
