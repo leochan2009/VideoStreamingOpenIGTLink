@@ -319,7 +319,7 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
   std::string headLine = "NAL-Unit Before-Decoding After-Decoding";
   this->evalToolDecodeThread->AddAnElementToLine(headLine);
   this->evalToolDecodeThread->WriteCurrentLineToFile();
-  headLine = "NAL-Unit Fragment-Number Fragment-Paket-SendingTime";
+  headLine = "NAL-Unit Fragment-Number Fragment-Paket-ReceivingTime";
   this->evalToolPaketThread->AddAnElementToLine(headLine);
   this->evalToolPaketThread->WriteCurrentLineToFile();
   //----------------------------

@@ -32,6 +32,7 @@ void EvaluationTool::WriteALineToFile(std::string line)
       this->currentLine.clear();
     }
     fclose(pYuvFile);
+    pYuvFile = NULL;
   }
 }
 
