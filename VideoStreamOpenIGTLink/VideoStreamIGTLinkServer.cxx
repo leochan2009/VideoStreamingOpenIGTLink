@@ -91,6 +91,9 @@ int VideoStreamIGTLinkServer::StartServer ()
     sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
     fileName.append(buffertemp);
     this->evalTool->filename = fileName;
+    std::string headLine = "NAL-Unit Fragment-Number Before-Encoding After-Encoding Sending-Paket";
+    this->evalTool->AddAnElementToLine(headLine);
+    this->evalTool->WriteCurrentLineToFile();
     //----------------------------
     
     if(this->transportMethod==VideoStreamIGTLinkServer::UseTCP)

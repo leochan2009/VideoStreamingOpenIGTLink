@@ -164,6 +164,12 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
   sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
   this->evalToolDecodeThread->filename = std::string(fileName).append("DecodeThread-").append(buffertemp);
   this->evalToolPaketThread->filename = std::string(fileName).append("PaketThread-").append(buffertemp);
+  std::string headLine = "NAL-Unit Before-Decoding After-Decoding";
+  this->evalToolDecodeThread->AddAnElementToLine(headLine);
+  this->evalToolDecodeThread->WriteCurrentLineToFile();
+  headLine = "NAL-Unit Fragment-Number Fragment-Paket-SendingTime";
+  this->evalToolPaketThread->AddAnElementToLine(headLine);
+  this->evalToolPaketThread->WriteCurrentLineToFile();
   int r = socket->ConnectToServer(TCPServerIPAddress, TCPServerPort);
   
   if (r != 0)
@@ -225,7 +231,7 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
       
       // Deserialize the transform data
       // If you want to skip CRC check, call Unpack() without argument.
-      int c = videoMsg->Unpack();
+      int c = videoMsg->Unpack(1);
       
       if (c==0) // if CRC check fails
       {
@@ -254,7 +260,7 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
         break;
       }
       ReceiverTimerDecodeThread->GetTime();
-      sprintf(buffertemp,"llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
+      sprintf(buffertemp,"%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
       evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
       evalToolDecodeThread->WriteCurrentLineToFile(); // this is actually the decode time of a single NAL unit
     }
@@ -298,6 +304,12 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
   sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
   this->evalToolDecodeThread->filename = std::string(fileName).append("DecodeThread-").append(buffertemp);
   this->evalToolPaketThread->filename = std::string(fileName).append("PaketThread-").append(buffertemp);
+  std::string headLine = "NAL-Unit Before-Decoding After-Decoding";
+  this->evalToolDecodeThread->AddAnElementToLine(headLine);
+  this->evalToolDecodeThread->WriteCurrentLineToFile();
+  headLine = "NAL-Unit Fragment-Number Fragment-Paket-SendingTime";
+  this->evalToolPaketThread->AddAnElementToLine(headLine);
+  this->evalToolPaketThread->WriteCurrentLineToFile();
   //----------------------------
   
   //UDPSocket->JoinNetwork("226.0.0.1", port, 1);
@@ -342,7 +354,7 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
       if (MSGLength == videoMultiPKTMSG->GetPackSize())
       {
         memcpy(videoMultiPKTMSG->GetPackPointer(), message, MSGLength);
-        videoMultiPKTMSG->Unpack(0);
+        videoMultiPKTMSG->Unpack(1);
         this->SetWidth(videoMultiPKTMSG->GetWidth());
         this->SetHeight(videoMultiPKTMSG->GetHeight());
         int streamLength = videoMultiPKTMSG->GetBitStreamSize();
