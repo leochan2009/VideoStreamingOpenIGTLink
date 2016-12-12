@@ -131,7 +131,7 @@ VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver(char *argv[])
   this->kpOuputFileName = (char*)"decodedOutput.yuv";
   this->pOptionFileName = NULL;
   this->videoMessageBuffer=NULL;
-  this->decodedFrame=NULL;
+  this->decodedNal=NULL;
   socket = igtl::ClientSocket::New();
   UDPSocket = igtl::UDPClientSocket::New();
   this->Height = 0;
@@ -163,13 +163,9 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
   char buffertemp[64];
   sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
   this->evalToolDecodeThread->filename = std::string(fileName).append("DecodeThread-").append(buffertemp);
-  this->evalToolPaketThread->filename = std::string(fileName).append("PaketThread-").append(buffertemp);
   std::string headLine = "NAL-Unit Before-Decoding After-Decoding";
   this->evalToolDecodeThread->AddAnElementToLine(headLine);
   this->evalToolDecodeThread->WriteCurrentLineToFile();
-  headLine = "NAL-Unit Fragment-Number Fragment-Paket-SendingTime";
-  this->evalToolPaketThread->AddAnElementToLine(headLine);
-  this->evalToolPaketThread->WriteCurrentLineToFile();
   int r = socket->ConnectToServer(TCPServerIPAddress, TCPServerPort);
   
   if (r != 0)
@@ -249,19 +245,35 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
       this->videoMessageBuffer = new uint8_t[streamLength];
       memcpy(this->videoMessageBuffer, videoMsg->GetPackFragmentPointer(2), streamLength);
       ReceiverTimerDecodeThread->GetTime();
+      static int frameNum = 0;
       char buffertemp[64];
+      sprintf(buffertemp, "%lu", frameNum);
+      evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
       sprintf(buffertemp, "%lu", videoMsg->GetMessageID());
       evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
       sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
       evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
-      if (this->ProcessVideoStream(this->videoMessageBuffer)== 0)
+      int status = this->ProcessVideoStream(this->videoMessageBuffer);
+      
+      if (status == 0)
       {
         this->SendStopMessage();
         break;
       }
-      ReceiverTimerDecodeThread->GetTime();
-      sprintf(buffertemp,"%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
-      evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
+      else if(status == 1)
+      {
+        ReceiverTimerDecodeThread->GetTime();
+        sprintf(buffertemp,"%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
+        evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
+      }
+      else if(status == 2)
+      {
+        ReceiverTimerDecodeThread->GetTime();
+        sprintf(buffertemp,"%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
+        evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
+        frameNum ++;
+      }
+      
       evalToolDecodeThread->WriteCurrentLineToFile(); // this is actually the decode time of a single NAL unit
     }
     else
@@ -340,6 +352,7 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
       glock->Lock();
       std::map<igtl_uint32, igtl::UnWrappedMessage*>::iterator it = rtpWrapper->unWrappedMessages.begin();
       igtlUint8 * message = new igtlUint8[it->second->messageDataLength];
+      static int frameNum = 0;
       int MSGLength = it->second->messageDataLength;
       memcpy(message, it->second->messagePackPointer, it->second->messageDataLength);
       rtpWrapper->unWrappedMessages.erase(it);
@@ -371,13 +384,26 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
         evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
         sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
         evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
-        if (this->ProcessVideoStream(this->videoMessageBuffer)== 0) // To do, check if we need to get all the NALs
+        int status = this->ProcessVideoStream(this->videoMessageBuffer);
+        
+        if (status == 0)
         {
           break;
         }
-        ReceiverTimerDecodeThread->GetTime();
-        sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
-        evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
+        else if(status == 1)
+        {
+          ReceiverTimerDecodeThread->GetTime();
+          sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
+          evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
+        }
+        else if(status == 2)
+        {
+          ReceiverTimerDecodeThread->GetTime();
+          sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampUint64());
+          evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
+          frameNum ++;
+        }
+        
         evalToolDecodeThread->WriteCurrentLineToFile(); // this is actually the decode time of a single NAL unit
       }
       delete message;
@@ -500,14 +526,14 @@ void VideoStreamIGTLinkReceiver::SetStreamLength(int iStreamLength)
   this->StreamLength = iStreamLength;
 }
 
-void VideoStreamIGTLinkReceiver::SetDecodedFrame()
+void VideoStreamIGTLinkReceiver::SetDecodedNal()
 {
-  if (!(this->decodedFrame == NULL))
+  if (!(this->decodedNal == NULL))
   {
-    delete[] this->decodedFrame;
+    delete[] this->decodedNal;
   }
-  this->decodedFrame = NULL;
-  this->decodedFrame = new unsigned char[this->Width*this->Height*3>>1];
+  this->decodedNal = NULL;
+  this->decodedNal = new unsigned char[this->Width*this->Height*3>>1];
 }
 
 int VideoStreamIGTLinkReceiver::ProcessVideoStream(uint8_t* bitStream)
@@ -518,13 +544,10 @@ int VideoStreamIGTLinkReceiver::ProcessVideoStream(uint8_t* bitStream)
   
   if (useCompress)
   {
-    this->SetDecodedFrame();
-    H264DecodeInstance->DecodeSingleFrame(this->pSVCDecoder, bitStream, this->decodedFrame, kpOuputFileName, Width, Height, StreamLength, pOptionFileName);
-    if (this->decodedFrame)
-    {
-      return 1;
-    }
-    return 0;
+    this->SetDecodedNal();
+    int status = H264DecodeInstance->DecodeSingleNal(this->pSVCDecoder, bitStream, this->decodedNal, kpOuputFileName, Width, Height, StreamLength, pOptionFileName);
+    // return 2 for succefully decode one frame
+    return status;
   }
   else
   {
@@ -539,7 +562,7 @@ int VideoStreamIGTLinkReceiver::ProcessVideoStream(uint8_t* bitStream)
     H264DecodeInstance->Write2File (pYuvFile, pData, iStride, Width, Height);
     fclose (pYuvFile);
     pYuvFile = NULL;
-    return 1;
+    return 2;
   }
   return 0;
 }

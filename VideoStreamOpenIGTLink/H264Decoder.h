@@ -24,6 +24,6 @@ public:
   
   void ComposeByteSteam(uint8_t** inputData, SBufferInfo bufInfo, uint8_t *outputByteStream,  int iWidth, int iHeight);
   
-  void DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream,uint8_t* outputByteStream, const char* kpOuputFileName,
+  int DecodeSingleNal (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream,uint8_t* outputByteStream, const char* kpOuputFileName,
                                             int32_t& iWidth, int32_t& iHeight, int32_t& iStreamSize, const char* pOptionFileName);
 };

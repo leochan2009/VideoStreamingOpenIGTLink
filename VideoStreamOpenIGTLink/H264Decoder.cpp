@@ -97,7 +97,7 @@ void H264Decode::ComposeByteSteam(uint8_t** inputData, SBufferInfo bufInfo, uint
   
 }
 
-void H264Decode::DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream,uint8_t* outputByteStream, const char* kpOuputFileName,
+int H264Decode::DecodeSingleNal (ISVCDecoder* pDecoder, unsigned char* kpH264BitStream,uint8_t* outputByteStream, const char* kpOuputFileName,
                          int32_t& iWidth, int32_t& iHeight, int32_t& iStreamSize, const char* pOptionFileName) {
   
   
@@ -255,6 +255,11 @@ void H264Decode::DecodeSingleFrame (ISVCDecoder* pDecoder, unsigned char* kpH264
     iBufPos += iSliceSize;
     ++ iSliceIndex;
   }
+  if (iFrameCount)
+  {
+    return 2;
+  }
+  return 1;
   // coverity scan uninitial
 label_exit:
   if (pBuf) {

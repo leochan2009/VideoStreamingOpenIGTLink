@@ -62,7 +62,7 @@ public:
   
   SDecodingParam decParam;
   
-  unsigned char* decodedFrame;
+  unsigned char* decodedNal;
   
   char* kpOuputFileName;
   
@@ -102,7 +102,7 @@ public:
   
   void SetStreamLength(int iStreamLength);
   
-  void SetDecodedFrame();
+  void SetDecodedNal();
   
   int Width;
   

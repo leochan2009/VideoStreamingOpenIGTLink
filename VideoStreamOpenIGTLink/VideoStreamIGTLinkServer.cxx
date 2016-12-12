@@ -69,6 +69,7 @@ int VideoStreamIGTLinkServer::StartServer ()
   {
     // Initialize the evaluation file
     std::string fileName = std::string(this->deviceName);
+    std::string headLine = "FrameNumber NAL-Unit ";
     if (transportMethod == 0)
     {
       fileName.append("-UseTCP");
@@ -76,6 +77,7 @@ int VideoStreamIGTLinkServer::StartServer ()
     else
     {
       fileName.append("-UseUDP");
+      headLine.append("Fragment-Number ");
     }
     if (useCompress == 0)
     {
@@ -84,14 +86,16 @@ int VideoStreamIGTLinkServer::StartServer ()
     else
     {
       fileName.append("-Compressed-");
+      headLine.append("Before-Encoding After-Encoding ");
     }
+    headLine.append("Sending-Paket");
     fileName.append("Server-");
     ServerTimer->GetTime();
     char buffertemp[64];
     sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
     fileName.append(buffertemp);
     this->evalTool->filename = fileName;
-    std::string headLine = "NAL-Unit Fragment-Number Before-Encoding After-Encoding Sending-Paket";
+    
     this->evalTool->AddAnElementToLine(headLine);
     this->evalTool->WriteCurrentLineToFile();
     //----------------------------
@@ -255,9 +259,7 @@ void* ThreadFunctionServer(void* ptr)
       {
         // Create a message buffer to receive header
         parentObj->interval = 100;
-        parentObj->useCompress = true;
         strncpy(parentObj->codecName, "H264", IGTL_VIDEO_CODEC_NAME_SIZE);
-        parentObj->InitializationDone = false;
         parentObj->serverConnected     = true;
         parentObj->conditionVar->Signal();
         while (parentObj->serverConnected)
@@ -619,6 +621,10 @@ void VideoStreamIGTLinkServer::SendOriginalData()
           for (int i = 0; i< rtpWrapper->fragmentNumberList.size(); i++)
           {
             char buffertemp[64];
+            igtl_uint32 frameNum = messageID;
+            sprintf(buffertemp, "%lu", frameNum);
+            evalTool->AddAnElementToLine(std::string(buffertemp));
+            
             sprintf(buffertemp, "%lu", messageID);
             evalTool->AddAnElementToLine(std::string(buffertemp));
 
@@ -637,10 +643,14 @@ void VideoStreamIGTLinkServer::SendOriginalData()
           this->glock->Lock();
           if(this->socket)
           {
-            this->serverSocket->Send(videoMsg->GetPackPointer(), videoMsg->GetPackSize());
+            this->socket->Send(videoMsg->GetPackPointer(), videoMsg->GetPackSize());
           }
           this->glock->Unlock();
           char buffertemp[64];
+          igtl_uint32 frameNum = messageID;
+          sprintf(buffertemp, "%lu", frameNum);
+          evalTool->AddAnElementToLine(std::string(buffertemp));
+          
           sprintf(buffertemp, "%lu", messageID);
           evalTool->AddAnElementToLine(std::string(buffertemp));
           sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
@@ -659,63 +669,68 @@ void VideoStreamIGTLinkServer::SendCompressedData()
   //int frameSize = pSrcPic->iPicWidth* pSrcPic->iPicHeight * 3 >> 1;
   if(this->transportMethod == UseTCP)
   {
-    igtl::VideoMessage::Pointer videoMsg;
-    videoMsg = igtl::VideoMessage::New();
-    videoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
-    videoMsg->SetDeviceName(this->deviceName.c_str());
-    ServerTimer->SetTime(this->encodeEndTime);
-    videoMsg->SetTimeStamp(ServerTimer);
     static igtl_uint32 messageID = 0;
+    static igtl_uint32 frameNum = 0;
     int frameSize = 0;
     int iLayer = 0;
     if (sFbi.iFrameSizeInBytes > 0)
     {
-      videoMsg->SetBitStreamSize(sFbi.iFrameSizeInBytes);
-      videoMsg->AllocateBuffer();
-      videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
-      videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
-      videoMsg->SetWidth(pSrcPic->iPicWidth);
-      videoMsg->SetHeight(pSrcPic->iPicHeight);
-      videoMsg->SetMessageID(messageID);
-      messageID ++;
       while (iLayer < sFbi.iLayerNum) {
         SLayerBSInfo* pLayerBsInfo = &sFbi.sLayerInfo[iLayer];
         if (pLayerBsInfo != NULL) {
           int iLayerSize = 0;
-          int iNalIdx = pLayerBsInfo->iNalCount - 1;
-          do {
-            iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
-            -- iNalIdx;
-          } while (iNalIdx >= 0);
-          frameSize += iLayerSize;
-          for (int i = 0; i < iLayerSize ; i++)
+          for (int iNalIdx = 0 ; iNalIdx < pLayerBsInfo->iNalCount; iNalIdx ++)
           {
-            videoMsg->GetPackFragmentPointer(2)[frameSize-iLayerSize+i] = pLayerBsInfo->pBsBuf[i];
+            int nalLength = pLayerBsInfo->pNalLengthInByte[iNalIdx];
+            igtl::VideoMessage::Pointer videoMsg;
+            videoMsg = igtl::VideoMessage::New();
+            videoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
+            videoMsg->SetMessageID(messageID);
+            videoMsg->SetBitStreamSize(nalLength);
+            ServerTimer->SetTime(this->encodeEndTime);
+            videoMsg->SetTimeStamp(ServerTimer);
+            videoMsg->AllocateBuffer();
+            videoMsg->SetDeviceName(this->deviceName.c_str());
+            videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
+            videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
+            videoMsg->SetWidth(pSrcPic->iPicWidth);
+            videoMsg->SetHeight(pSrcPic->iPicHeight);
+            
+            
+            memcpy(videoMsg->GetPackFragmentPointer(2), &pLayerBsInfo->pBsBuf[iLayerSize], nalLength);
+            std::cerr<<nalLength<<std::endl;
+            
+            videoMsg->Pack();
+            this->glock->Lock();
+            if(this->socket)
+            {
+              this->socket->Send(videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
+            }
+            this->glock->Unlock();
+            char buffertemp[64];
+            sprintf(buffertemp, "%lu", frameNum);
+            evalTool->AddAnElementToLine(std::string(buffertemp));
+            
+            sprintf(buffertemp, "%lu", messageID);
+            evalTool->AddAnElementToLine(std::string(buffertemp));
+            sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
+            evalTool->AddAnElementToLine(std::string(buffertemp));
+            evalTool->WriteCurrentLineToFile();
+            
+            iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
+            messageID ++;
           }
         }
-        ++ iLayer;
       }
-      videoMsg->Pack();
     }
-    this->glock->Lock();
-    if(this->socket)
-    {
-      this->socket->Send(videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
-    }
-    this->glock->Unlock();
-    char buffertemp[64];
-    sprintf(buffertemp, "%lu", messageID);
-    evalTool->AddAnElementToLine(std::string(buffertemp));
-    sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
-    evalTool->AddAnElementToLine(std::string(buffertemp));
-    evalTool->WriteCurrentLineToFile();
+    frameNum++;
   }
   else if(this->transportMethod == UseUDP)
   {
     int iLayer = 0;
     if (sFbi.iFrameSizeInBytes > 0)
     {
-      
+      static igtl_uint32 frameNum = 0;
       static igtlUint32 messageID = 0;
       while (iLayer < sFbi.iLayerNum) {
         SLayerBSInfo* pLayerBsInfo = &sFbi.sLayerInfo[iLayer];
@@ -749,6 +764,9 @@ void VideoStreamIGTLinkServer::SendCompressedData()
             for (int i = 0; i< rtpWrapper->fragmentNumberList.size(); i++)
             {
               char buffertemp[64];
+              sprintf(buffertemp, "%lu", frameNum);
+              evalTool->AddAnElementToLine(std::string(buffertemp));
+              
               sprintf(buffertemp, "%lu", messageID);
               evalTool->AddAnElementToLine(std::string(buffertemp));
               
@@ -780,6 +798,7 @@ void VideoStreamIGTLinkServer::SendCompressedData()
         }
         ++ iLayer;
       }
+      frameNum++;
     }
   }
   
