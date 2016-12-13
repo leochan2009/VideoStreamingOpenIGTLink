@@ -88,7 +88,7 @@ int VideoStreamIGTLinkServer::StartServer ()
     fileName.append("Server-");
     ServerTimer->GetTime();
     char buffertemp[64];
-    sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
+    sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampInNanoseconds());
     fileName.append(buffertemp);
     this->evalTool->filename = fileName;
     //----------------------------
@@ -664,7 +664,7 @@ void VideoStreamIGTLinkServer::SendOriginalData()
           evalTool->AddAnElementToLine(std::string(buffertemp));
           
           ServerTimer->GetTime();
-          sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
+          sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampInNanoseconds());
           evalTool->AddAnElementToLine(std::string(buffertemp));
           evalTool->WriteCurrentLineToFile();
         }
@@ -686,7 +686,7 @@ void VideoStreamIGTLinkServer::SendCompressedData()
     videoMsg->SetDeviceName(this->deviceName.c_str());
     ServerTimer->SetTime(this->encodeEndTime);
     videoMsg->SetTimeStamp(ServerTimer);
-    static igtl_uint32 messageID = 0;
+    static igtl_uint32 messageID = -1;
     int frameSize = 0;
     int iLayer = 0;
     if (sFbi.iFrameSizeInBytes > 0)
@@ -697,8 +697,8 @@ void VideoStreamIGTLinkServer::SendCompressedData()
       videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
       videoMsg->SetWidth(pSrcPic->iPicWidth);
       videoMsg->SetHeight(pSrcPic->iPicHeight);
-      videoMsg->SetMessageID(messageID);
       messageID ++;
+      videoMsg->SetMessageID(messageID);
       while (iLayer < sFbi.iLayerNum) {
         SLayerBSInfo* pLayerBsInfo = &sFbi.sLayerInfo[iLayer];
         if (pLayerBsInfo != NULL) {
@@ -717,26 +717,26 @@ void VideoStreamIGTLinkServer::SendCompressedData()
         ++ iLayer;
       }
       videoMsg->Pack();
-    }
-    this->glock->Lock();
-    if(this->socket)
-    {
-      this->socket->Send(videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
-    }
-    this->glock->Unlock();
-    char buffertemp[64];
-    sprintf(buffertemp, "%lu", messageID);
-    evalTool->AddAnElementToLine(std::string(buffertemp));
-    sprintf(buffertemp, "%llu", this->encodeStartTime);
-    evalTool->AddAnElementToLine(std::string(buffertemp));
-    
-    sprintf(buffertemp, "%llu", this->encodeEndTime);
-    evalTool->AddAnElementToLine(std::string(buffertemp));
+      this->glock->Lock();
+      if(this->socket)
+      {
+        this->socket->Send(videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
+      }
+      this->glock->Unlock();
+      char buffertemp[64];
+      sprintf(buffertemp, "%lu", messageID);
+      evalTool->AddAnElementToLine(std::string(buffertemp));
+      sprintf(buffertemp, "%llu", this->encodeStartTime);
+      evalTool->AddAnElementToLine(std::string(buffertemp));
+      
+      sprintf(buffertemp, "%llu", this->encodeEndTime);
+      evalTool->AddAnElementToLine(std::string(buffertemp));
 
-    ServerTimer->GetTime();
-    sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
-    evalTool->AddAnElementToLine(std::string(buffertemp));
-    evalTool->WriteCurrentLineToFile();
+      ServerTimer->GetTime();
+      sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampInNanoseconds());
+      evalTool->AddAnElementToLine(std::string(buffertemp));
+      evalTool->WriteCurrentLineToFile();
+    }
   }
   else if(this->transportMethod == UseUDP)
   {
@@ -877,10 +877,10 @@ void* VideoStreamIGTLinkServer::EncodeFile(void)
     iStart = WelsTime();
     this->pSrcPic->uiTimeStamp = WELS_ROUND (iFrameIdx * (1000 / sSvcParam.fMaxFrameRate));
     this->ServerTimer->GetTime();
-    this->encodeStartTime = this->ServerTimer->GetTimeStampUint64();
+    this->encodeStartTime = this->ServerTimer->GetTimeStampInNanoseconds();
     int iEncFrames = this->pSVCEncoder->EncodeFrame (pSrcPic, &sFbi);
     this->ServerTimer->GetTime();
-    this->encodeEndTime = this->ServerTimer->GetTimeStampUint64();
+    this->encodeEndTime = this->ServerTimer->GetTimeStampInNanoseconds();
     iTotal += WelsTime()- iStart;
     ++ iFrameIdx;
     if (sFbi.eFrameType == videoFrameTypeSkip) {
