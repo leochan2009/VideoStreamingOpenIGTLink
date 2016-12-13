@@ -91,13 +91,21 @@ int VideoStreamIGTLinkServer::StartServer ()
     sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
     fileName.append(buffertemp);
     this->evalTool->filename = fileName;
-    std::string headLine = "NAL-Unit Fragment-Number Before-Encoding After-Encoding Sending-Paket";
-    this->evalTool->AddAnElementToLine(headLine);
-    this->evalTool->WriteCurrentLineToFile();
     //----------------------------
     
     if(this->transportMethod==VideoStreamIGTLinkServer::UseTCP)
     {
+      std::string headLine = "";
+      if (useCompress == 0)
+      {
+        headLine = "FrameNumber Sending-Paket";
+      }
+      else
+      {
+        headLine = "FrameNumber Before-Encoding After-Encoding Sending-Paket";
+      }
+      this->evalTool->AddAnElementToLine(headLine);
+      this->evalTool->WriteCurrentLineToFile();
       igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
       threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionServer, this);
       this->glock->Lock();
@@ -110,6 +118,18 @@ int VideoStreamIGTLinkServer::StartServer ()
     }
     else if (this->transportMethod == VideoStreamIGTLinkServer::UseUDP)
     {
+      std::string headLine = "";
+      if (useCompress == 0)
+      {
+        headLine = "FrameNum NAL-Unit Fragment-Number Sending-Paket";
+      }
+      else
+      {
+        headLine = "FrameNum NAL-Unit Fragment-Number Before-Encoding After-Encoding Sending-Paket";
+      }
+      
+      this->evalTool->AddAnElementToLine(headLine);
+      this->evalTool->WriteCurrentLineToFile();
       igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
       threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionUDPServer, this);
       this->glock->Lock();
@@ -255,7 +275,6 @@ void* ThreadFunctionServer(void* ptr)
       {
         // Create a message buffer to receive header
         parentObj->interval = 100;
-        parentObj->useCompress = true;
         strncpy(parentObj->codecName, "H264", IGTL_VIDEO_CODEC_NAME_SIZE);
         parentObj->InitializationDone = false;
         parentObj->serverConnected     = true;
@@ -593,6 +612,7 @@ void VideoStreamIGTLinkServer::SendOriginalData()
         igtl::VideoMessage::Pointer videoMsg;
         videoMsg = igtl::VideoMessage::New();
         videoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
+        videoMsg->SetDeviceName(this->deviceName.c_str());
         videoMsg->SetBitStreamSize(frameSize);
         videoMsg->AllocateBuffer();
         videoMsg->SetScalarType(videoMsg->TYPE_UINT8);
@@ -630,19 +650,20 @@ void VideoStreamIGTLinkServer::SendOriginalData()
             
             evalTool->WriteCurrentLineToFile();
           }
-          igtl::Sleep(500);
         }
         else if(this->transportMethod == UseTCP)
         {
           this->glock->Lock();
           if(this->socket)
           {
-            this->serverSocket->Send(videoMsg->GetPackPointer(), videoMsg->GetPackSize());
+            this->socket->Send(videoMsg->GetPackPointer(), videoMsg->GetPackSize());
           }
           this->glock->Unlock();
           char buffertemp[64];
           sprintf(buffertemp, "%lu", messageID);
           evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          ServerTimer->GetTime();
           sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
           evalTool->AddAnElementToLine(std::string(buffertemp));
           evalTool->WriteCurrentLineToFile();
@@ -706,6 +727,13 @@ void VideoStreamIGTLinkServer::SendCompressedData()
     char buffertemp[64];
     sprintf(buffertemp, "%lu", messageID);
     evalTool->AddAnElementToLine(std::string(buffertemp));
+    sprintf(buffertemp, "%llu", this->encodeStartTime);
+    evalTool->AddAnElementToLine(std::string(buffertemp));
+    
+    sprintf(buffertemp, "%llu", this->encodeEndTime);
+    evalTool->AddAnElementToLine(std::string(buffertemp));
+
+    ServerTimer->GetTime();
     sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampUint64());
     evalTool->AddAnElementToLine(std::string(buffertemp));
     evalTool->WriteCurrentLineToFile();
@@ -884,7 +912,6 @@ void* VideoStreamIGTLinkServer::EncodeFile(void)
     g_iEncodedFrame = iActualFrameEncodedCount;
 #endif
   }
-  this->serverConnected = false;
   return NULL;
 }
 
