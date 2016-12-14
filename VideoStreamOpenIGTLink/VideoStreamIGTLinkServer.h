@@ -180,6 +180,7 @@ public:
   igtl::TimeStamp::Pointer ServerTimer;
   
   EvaluationTool* evalTool;
+  EvaluationTool* evalToolFrame;
   
   
 };

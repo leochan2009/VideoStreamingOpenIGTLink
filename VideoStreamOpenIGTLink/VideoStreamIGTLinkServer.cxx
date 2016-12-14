@@ -61,6 +61,7 @@ VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(char *argv[])
   this->rtpWrapper = igtl::MessageRTPWrapper::New();
   this->ServerTimer = igtl::TimeStamp::New();
   this->evalTool = new EvaluationTool();
+  this->evalToolFrame = new EvaluationTool();
 }
 
 int VideoStreamIGTLinkServer::StartServer ()
@@ -69,6 +70,7 @@ int VideoStreamIGTLinkServer::StartServer ()
   {
     // Initialize the evaluation file
     std::string fileName = std::string(this->deviceName);
+    std::string fileNameFrame = std::string("");
     if (transportMethod == 0)
     {
       fileName.append("-UseTCP");
@@ -85,12 +87,16 @@ int VideoStreamIGTLinkServer::StartServer ()
     {
       fileName.append("-Compressed-");
     }
-    fileName.append("Server-");
+    fileNameFrame.append(fileName);
+    fileNameFrame.append("ServerEncode-");
+    fileName.append("ServerPaket-");
     ServerTimer->GetTime();
     char buffertemp[64];
     sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampInNanoseconds());
     fileName.append(buffertemp);
+    fileNameFrame.append(buffertemp);
     this->evalTool->filename = fileName;
+    this->evalToolFrame->filename = fileNameFrame;
     //----------------------------
     
     if(this->transportMethod==VideoStreamIGTLinkServer::UseTCP)
@@ -119,17 +125,23 @@ int VideoStreamIGTLinkServer::StartServer ()
     else if (this->transportMethod == VideoStreamIGTLinkServer::UseUDP)
     {
       std::string headLine = "";
+      std::string headLineUDPFrame = "";
       if (useCompress == 0)
       {
         headLine = "FrameNum NAL-Unit Fragment-Number Sending-Paket";
+        headLineUDPFrame = "FrameNum NAL-Unit Sending-Paket";
       }
       else
       {
         headLine = "FrameNum NAL-Unit Fragment-Number Before-Encoding After-Encoding Sending-Paket";
+        headLineUDPFrame = "FrameNum NAL-Unit Before-Encoding After-Encoding Sending-Paket";
       }
       
       this->evalTool->AddAnElementToLine(headLine);
       this->evalTool->WriteCurrentLineToFile();
+      this->evalToolFrame->AddAnElementToLine(headLineUDPFrame);
+      this->evalToolFrame->WriteCurrentLineToFile();
+      
       igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
       threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionUDPServer, this);
       this->glock->Lock();
@@ -609,6 +621,8 @@ void VideoStreamIGTLinkServer::SendOriginalData()
         if (!bCanBeRead)
           break;
         int frameSize = pSrcPic->iPicWidth* pSrcPic->iPicHeight * 3 >> 1;
+        static igtl_uint32 messageID = -1;
+        messageID ++;
         igtl::VideoMessage::Pointer videoMsg;
         videoMsg = igtl::VideoMessage::New();
         videoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
@@ -619,16 +633,16 @@ void VideoStreamIGTLinkServer::SendOriginalData()
         videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
         videoMsg->SetWidth(pSrcPic->iPicWidth);
         videoMsg->SetHeight(pSrcPic->iPicHeight);
-        static igtl_uint32 messageID = 0;
         videoMsg->SetMessageID(messageID);
-        messageID ++;
         videoMsg->m_Frame= pSrcPic->pData[0];
         ServerTimer->GetTime();
         videoMsg->SetTimeStamp(ServerTimer);
         videoMsg->Pack();
         if(this->transportMethod == UseUDP)
         {
-          
+          char buffer[64];
+          sprintf(buffer, "%lu", messageID);
+          evalToolFrame->AddAnElementToLine(std::string(buffer));
           // to do uncompressed data using UDP
           this->glock->Lock();
           if(this->socket)
@@ -636,6 +650,10 @@ void VideoStreamIGTLinkServer::SendOriginalData()
             rtpWrapper->WrapMessageAndSend(this->serverUDPSocket, (igtlUint8 *)videoMsg->GetPackPointer(), videoMsg->GetPackSize());
           }
           this->glock->Unlock();
+          
+          sprintf(buffer, "%lu", rtpWrapper->paketSendTimeStampList[rtpWrapper->paketSendTimeStampList.size()-1]);
+          evalToolFrame->AddAnElementToLine(std::string(buffer));
+          evalToolFrame->WriteCurrentLineToFile();
           for (int i = 0; i< rtpWrapper->fragmentNumberList.size(); i++)
           {
             char buffertemp[64];
@@ -744,7 +762,8 @@ void VideoStreamIGTLinkServer::SendCompressedData()
     if (sFbi.iFrameSizeInBytes > 0)
     {
       
-      static igtlUint32 messageID = 0;
+      static igtlUint32 nalID = 0;
+      static igtlUint32 frameNum = 0;
       while (iLayer < sFbi.iLayerNum) {
         SLayerBSInfo* pLayerBsInfo = &sFbi.sLayerInfo[iLayer];
         if (pLayerBsInfo != NULL) {
@@ -755,7 +774,7 @@ void VideoStreamIGTLinkServer::SendCompressedData()
             igtl::VideoMessage::Pointer videoMsg;
             videoMsg = igtl::VideoMessage::New();
             videoMsg->SetHeaderVersion(IGTL_HEADER_VERSION_2);
-            videoMsg->SetMessageID(messageID);
+            videoMsg->SetMessageID(nalID);
             videoMsg->SetBitStreamSize(nalLength);
             ServerTimer->SetTime(this->encodeEndTime);
             videoMsg->SetTimeStamp(ServerTimer);
@@ -768,16 +787,33 @@ void VideoStreamIGTLinkServer::SendCompressedData()
             
             
             memcpy((unsigned char *)videoMsg->GetPackFragmentPointer(2), &pLayerBsInfo->pBsBuf[iLayerSize], nalLength);
-            std::cerr<<nalLength<<std::endl;
             
             videoMsg->Pack();
             this->glock->Lock();
             int status = rtpWrapper->WrapMessageAndSend(this->serverUDPSocket, (igtlUint8 *)videoMsg->GetPackPointer(), videoMsg->GetPackSize());
             this->glock->Unlock();
+            char buffer[64];
+            sprintf(buffer, "%lu", frameNum);
+            evalToolFrame->AddAnElementToLine(std::string(buffer));
+            sprintf(buffer, "%lu", nalID);
+            evalToolFrame->AddAnElementToLine(std::string(buffer));
+            sprintf(buffer, "%llu", this->encodeStartTime);
+            evalToolFrame->AddAnElementToLine(std::string(buffer));
+            
+            sprintf(buffer, "%llu", this->encodeEndTime);
+            evalToolFrame->AddAnElementToLine(std::string(buffer));
+            
+            sprintf(buffer, "%lu", rtpWrapper->paketSendTimeStampList[rtpWrapper->paketSendTimeStampList.size()-1]);
+            evalToolFrame->AddAnElementToLine(std::string(buffer));
+            evalToolFrame->WriteCurrentLineToFile();
             for (int i = 0; i< rtpWrapper->fragmentNumberList.size(); i++)
             {
               char buffertemp[64];
-              sprintf(buffertemp, "%lu", messageID);
+              
+              sprintf(buffertemp, "%lu", frameNum);
+              evalTool->AddAnElementToLine(std::string(buffertemp));
+              
+              sprintf(buffertemp, "%lu", nalID);
               evalTool->AddAnElementToLine(std::string(buffertemp));
               
               if (rtpWrapper->fragmentNumberList[i] == 0XFFFF)
@@ -803,11 +839,12 @@ void VideoStreamIGTLinkServer::SendCompressedData()
             }
             
             iLayerSize += pLayerBsInfo->pNalLengthInByte[iNalIdx];
-            messageID ++;
+            nalID ++;
           }
         }
         ++ iLayer;
       }
+      ++frameNum;
     }
   }
   

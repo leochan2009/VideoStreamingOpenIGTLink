@@ -396,8 +396,8 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
         }
         else if(status == 2)
         {
-          frameNum ++;
           sprintf(buffertemp, "%lu", frameNum);
+          frameNum ++;
           evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
           sprintf(buffertemp, "%lu", videoMultiPKTMSG->GetMessageID());
           evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
