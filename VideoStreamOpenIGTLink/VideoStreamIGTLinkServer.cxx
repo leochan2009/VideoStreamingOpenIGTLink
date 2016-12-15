@@ -16,8 +16,6 @@
 
 void* ThreadFunctionServer(void* ptr);
 
-void* ThreadFunctionUDPServer(void* ptr);
-
 void UpdateHashFromFrame (SFrameBSInfo& info, SHA1Context* ctx) {
   for (int i = 0; i < info.iLayerNum; ++i) {
     const SLayerBSInfo& layerInfo = info.sLayerInfo[i];
@@ -165,8 +163,8 @@ int VideoStreamIGTLinkServer::StartUDPServer ()
       }
       else
       {
-        headLine = "FrameNum NAL-Unit Packet-Size Fragment-Number Before-Encoding After-Encoding Sending-Packet";
-        headLineUDPFrame = "FrameNum NAL-Unit Packet-Size Before-Encoding After-Encoding Sending-Packet";
+        headLine = "FrameNum NAL-Unit Packet-Size Fragment-Number Before-Encoding After-Encoding Sending-Packet-Pre Sending-Packet-Post";
+        headLineUDPFrame = "FrameNum NAL-Unit Packet-Size Before-Encoding After-Encoding Sending-Packet-Pre Sending-Packet-Pre";
       }
       
       this->evalTool->AddAnElementToLine(headLine);
@@ -806,7 +804,7 @@ void* ThreadFunctionSendPacket(void* ptr)
   while(1)
   {
     parentObj.server->glock->Lock();
-    if(parentObj.server->encodedFrames.size())
+    if(parentObj.server->encodedFrames.size()>0)
     {
       
       if (parentObj.server->transportMethod == VideoStreamIGTLinkServer::TransportMethod::UseUDP)
@@ -836,8 +834,12 @@ void* ThreadFunctionSendPacket(void* ptr)
         sprintf(buffer, "%llu", stat.encodeEndTime);
         parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
         
+        sprintf(buffer, "%lu", parentObj.server->rtpWrapper->PacketBeforeSendTimeStampList[0]);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        
         sprintf(buffer, "%lu", parentObj.server->rtpWrapper->PacketSendTimeStampList[parentObj.server->rtpWrapper->PacketSendTimeStampList.size()-1]);
         parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        
         parentObj.server->evalToolFrame->WriteCurrentLineToFile();
         for (int i = 0; i< parentObj.server->rtpWrapper->fragmentNumberList.size(); i++)
         {
@@ -866,6 +868,9 @@ void* ThreadFunctionSendPacket(void* ptr)
           parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
           
           sprintf(buffertemp, "%llu", stat.encodeEndTime);
+          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          sprintf(buffertemp, "%llu", parentObj.server->rtpWrapper->PacketBeforeSendTimeStampList[i]);
           parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
           
           sprintf(buffertemp, "%llu", parentObj.server->rtpWrapper->PacketSendTimeStampList[i]);
