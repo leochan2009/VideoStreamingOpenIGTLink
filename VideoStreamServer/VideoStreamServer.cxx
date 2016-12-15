@@ -29,53 +29,48 @@ int main (int argc, char** argv)
   VideoStreamIGTLinkServer server(argv);
   server.InitializeEncoderAndServer();
   server.SetWaitSTTCommand(false);
-  server.StartServer();
+  if(server.transportMethod==server.UseTCP)
+  {
+    server.StartTCPServer();
+  }
+  else if(server.transportMethod==server.UseUDP)
+  {
+    server.StartUDPServer();
+  }
   while(1)
   {
-    if(server.useCompress == 1)
+    if(server.transportMethod==server.UseTCP)
     {
-      if(server.transportMethod==server.UseTCP)
-      {
-        if(server.GetServerConnectStatus())
-        {
-          if (!server.GetInitializationStatus())
-          {
-            server.InitializeEncoderAndServer();
-          }
-          server.EncodeFile();
-        }
-      }
-      else if (server.transportMethod==server.UseUDP)
+      if(server.GetServerConnectStatus())
       {
         if (!server.GetInitializationStatus())
         {
           server.InitializeEncoderAndServer();
         }
-        server.EncodeFile();
-      }
-    }
-    else
-    {
-      if(server.transportMethod==server.UseTCP)
-      {
-        if(server.GetServerConnectStatus())
+        if(server.useCompress == 1)
         {
-          if (!server.GetInitializationStatus())
-          {
-            server.InitializeEncoderAndServer();
-          }
+          server.EncodeFile();
+        }
+        else
+        {
           server.SendOriginalData();
         }
       }
-      else if (server.transportMethod==server.UseUDP)
+    }
+    else if(server.transportMethod==server.UseUDP)
+    {
+      if (!server.GetInitializationStatus())
       {
-        if (!server.GetInitializationStatus())
-        {
-          server.InitializeEncoderAndServer();
-        }
+        server.InitializeEncoderAndServer();
+      }
+      if(server.useCompress == 1)
+      {
+        server.EncodeFile();
+      }
+      else
+      {
         server.SendOriginalData();
       }
-      
     }
   }
   return 0;

@@ -38,18 +38,18 @@ void* ThreadFunctionUnWrap(void* ptr)
   const char * videoDeviceName = parentObj.receiver->deviceName.c_str();
   while(1)
   {
-    parentObj.wrapper->UnWrapPaketWithTypeAndName(deviceType, videoDeviceName);
+    parentObj.wrapper->UnWrapPacketWithTypeAndName(deviceType, videoDeviceName);
     igtl::Sleep(5);
   }
 }
 
-void WriteTimeInfo(unsigned char * UDPPaket, int totMsgLen, VideoStreamIGTLinkReceiver* receiver)
+void WriteTimeInfo(unsigned char * UDPPacket, int totMsgLen, VideoStreamIGTLinkReceiver* receiver)
 {
   igtl_uint16 fragmentField;
   igtl_uint32 messageID;
   int extendedHeaderLength = sizeof(igtl_extended_header);
-  memcpy(&fragmentField, (void*)(UDPPaket + RTP_HEADER_LENGTH+IGTL_HEADER_SIZE+extendedHeaderLength-2),2);
-  memcpy(&messageID, (void*)(UDPPaket + RTP_HEADER_LENGTH+IGTL_HEADER_SIZE+extendedHeaderLength-6),4);
+  memcpy(&fragmentField, (void*)(UDPPacket + RTP_HEADER_LENGTH+IGTL_HEADER_SIZE+extendedHeaderLength-2),2);
+  memcpy(&messageID, (void*)(UDPPacket + RTP_HEADER_LENGTH+IGTL_HEADER_SIZE+extendedHeaderLength-6),4);
   if(igtl_is_little_endian())
   {
     fragmentField = BYTE_SWAP_INT16(fragmentField);
@@ -58,7 +58,7 @@ void WriteTimeInfo(unsigned char * UDPPaket, int totMsgLen, VideoStreamIGTLinkRe
   
   char buffertemp[64];
   sprintf(buffertemp, "%lu", messageID);
-  receiver->evalToolPaketThread->AddAnElementToLine(std::string(buffertemp));
+  receiver->evalToolPacketThread->AddAnElementToLine(std::string(buffertemp));
   if(fragmentField==0X0000) // fragment doesn't exist
   {
     sprintf(buffertemp, "%d", -1);
@@ -79,11 +79,11 @@ void WriteTimeInfo(unsigned char * UDPPaket, int totMsgLen, VideoStreamIGTLinkRe
   {
     sprintf(buffertemp, "%d", -2);
   }
-  receiver->evalToolPaketThread->AddAnElementToLine(std::string(buffertemp));
-  receiver->ReceiverTimerPaketThread->GetTime();
-  sprintf(buffertemp, "%llu", receiver->ReceiverTimerPaketThread->GetTimeStampInNanoseconds());
-  receiver->evalToolPaketThread->AddAnElementToLine(std::string(buffertemp));
-  receiver->evalToolPaketThread->WriteCurrentLineToFile();
+  receiver->evalToolPacketThread->AddAnElementToLine(std::string(buffertemp));
+  receiver->ReceiverTimerPacketThread->GetTime();
+  sprintf(buffertemp, "%llu", receiver->ReceiverTimerPacketThread->GetTimeStampInNanoseconds());
+  receiver->evalToolPacketThread->AddAnElementToLine(std::string(buffertemp));
+  receiver->evalToolPacketThread->WriteCurrentLineToFile();
 }
 
 
@@ -94,15 +94,15 @@ void* ThreadFunctionReadSocket(void* ptr)
   static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
   
   ReadSocketAndPush parentObj = *(static_cast<ReadSocketAndPush*>(info->UserData));
-  unsigned char UDPPaket[RTP_PAYLOAD_LENGTH+RTP_HEADER_LENGTH];
+  unsigned char UDPPacket[RTP_PAYLOAD_LENGTH+RTP_HEADER_LENGTH];
   while(1)
   {
-    int totMsgLen = parentObj.clientSocket->ReadSocket(UDPPaket, RTP_PAYLOAD_LENGTH+RTP_HEADER_LENGTH);
+    int totMsgLen = parentObj.clientSocket->ReadSocket(UDPPacket, RTP_PAYLOAD_LENGTH+RTP_HEADER_LENGTH);
     
-    WriteTimeInfo(UDPPaket, totMsgLen, parentObj.receiver);
+    WriteTimeInfo(UDPPacket, totMsgLen, parentObj.receiver);
     if (totMsgLen>0)
     {
-      parentObj.wrapper->PushDataIntoPaketBuffer(UDPPaket, totMsgLen);
+      parentObj.wrapper->PushDataIntoPacketBuffer(UDPPacket, totMsgLen);
     }
   }
 }
@@ -133,9 +133,9 @@ VideoStreamIGTLinkReceiver::VideoStreamIGTLinkReceiver(char *argv[])
   this->Width = 0;
   this->flipAtX = true;
   this->H264DecodeInstance = new H264Decode();
-  ReceiverTimerPaketThread = igtl::TimeStamp::New();
+  ReceiverTimerPacketThread = igtl::TimeStamp::New();
   ReceiverTimerDecodeThread = igtl::TimeStamp::New();
-  this->evalToolPaketThread = new EvaluationTool();
+  this->evalToolPacketThread = new EvaluationTool();
   this->evalToolDecodeThread = new EvaluationTool();
 
 }
@@ -310,13 +310,13 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
   char buffertemp[64];
   sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampInNanoseconds());
   this->evalToolDecodeThread->filename = std::string(fileName).append("DecodeThread-").append(buffertemp);
-  this->evalToolPaketThread->filename = std::string(fileName).append("PaketThread-").append(buffertemp);
+  this->evalToolPacketThread->filename = std::string(fileName).append("PacketThread-").append(buffertemp);
   std::string headLine = "FrameNum NAL-Unit Before-Decoding After-Decoding";
   this->evalToolDecodeThread->AddAnElementToLine(headLine);
   this->evalToolDecodeThread->WriteCurrentLineToFile();
-  headLine = "NAL-Unit Fragment-Number Fragment-Paket-ReceivingTime";
-  this->evalToolPaketThread->AddAnElementToLine(headLine);
-  this->evalToolPaketThread->WriteCurrentLineToFile();
+  headLine = "NAL-Unit Fragment-Number Fragment-Packet-ReceivingTime";
+  this->evalToolPacketThread->AddAnElementToLine(headLine);
+  this->evalToolPacketThread->WriteCurrentLineToFile();
   //----------------------------
   
   //UDPSocket->JoinNetwork("226.0.0.1", port, 1);

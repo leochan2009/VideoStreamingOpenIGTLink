@@ -43,6 +43,20 @@
 #include "welsencUtil.h"
 #include "../EvaluationTool.h"
 
+struct EvaluationTCP {
+  igtlUint32 messageID;
+  igtlUint64 encodeStartTime;
+  igtlUint64 encodeEndTime;
+  
+};
+
+struct EvaluationUDP {
+  igtlUint32 nalID;
+  igtlUint32 frameNum;
+  igtlUint64 encodeStartTime;
+  igtlUint64 encodeEndTime;
+};
+
 class ISVCEncoder;
 
 class VideoStreamIGTLinkServer
@@ -54,7 +68,12 @@ public:
   /**
    Start the server, this function will be holding the main program for a client connection.
    */
-  int StartServer();
+  int StartTCPServer();
+  
+  /**
+   Start the server, this function will be holding the main program for a client connection.
+   */
+  int StartUDPServer();
   
   /**
    Parse the configuration file to initialize the encoder and server.
@@ -182,5 +201,10 @@ public:
   EvaluationTool* evalTool;
   EvaluationTool* evalToolFrame;
   
+  std::map<igtlUint32, unsigned char*> encodedFrames;
+  
+  std::vector<EvaluationTCP> evaluationTCPStats;
+  
+  std::vector<EvaluationUDP> evaluationUDPStats;
   
 };

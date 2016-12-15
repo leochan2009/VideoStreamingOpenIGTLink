@@ -122,9 +122,9 @@ public:
   
   igtl::TimeStamp::Pointer ReceiverTimerDecodeThread;
   
-  igtl::TimeStamp::Pointer ReceiverTimerPaketThread;
+  igtl::TimeStamp::Pointer ReceiverTimerPacketThread;
   
-  EvaluationTool* evalToolPaketThread;
+  EvaluationTool* evalToolPacketThread;
   
   EvaluationTool* evalToolDecodeThread;
 
