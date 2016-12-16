@@ -39,7 +39,6 @@ void* ThreadFunctionUnWrap(void* ptr)
   while(1)
   {
     parentObj.wrapper->UnWrapPacketWithTypeAndName(deviceType, videoDeviceName);
-    igtl::Sleep(5);
   }
 }
 

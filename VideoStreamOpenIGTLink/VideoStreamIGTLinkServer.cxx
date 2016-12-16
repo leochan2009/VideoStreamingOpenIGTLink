@@ -98,11 +98,11 @@ int VideoStreamIGTLinkServer::StartTCPServer ()
       std::string headLine = "";
       if (useCompress == 0)
       {
-        headLine = "FrameNumber Sending-Packet";
+        headLine = "FrameNumber Packet-Size Sending-Packet";
       }
       else
       {
-        headLine = "FrameNumber Before-Encoding After-Encoding Sending-Packet";
+        headLine = "FrameNumber Packet-Size Before-Encoding After-Encoding Sending-Packet";
       }
       this->evalTool->AddAnElementToLine(headLine);
       this->evalTool->WriteCurrentLineToFile();
@@ -806,7 +806,7 @@ void* ThreadFunctionSendPacket(void* ptr)
     parentObj.server->glock->Lock();
     if(parentObj.server->encodedFrames.size()>0)
     {
-      
+      std::cerr<<parentObj.server->encodedFrames.size()<<std::endl;
       if (parentObj.server->transportMethod == VideoStreamIGTLinkServer::TransportMethod::UseUDP)
       {
         std::map<igtlUint32, unsigned char*>::iterator it = parentObj.server->encodedFrames.begin();
@@ -883,18 +883,22 @@ void* ThreadFunctionSendPacket(void* ptr)
       else if(parentObj.server->transportMethod == VideoStreamIGTLinkServer::TransportMethod::UseTCP)
       {
         std::map<igtlUint32, unsigned char*>::iterator it = parentObj.server->encodedFrames.begin();
-        parentObj.server->rtpWrapper->WrapMessageAndSend(parentObj.server->serverUDPSocket, it->second, it->first);
-        parentObj.server->encodedFrames.erase(it);
-        delete it->second;
-        it->second = NULL;
         if(parentObj.server->socket)
         {
           parentObj.server->socket->Send(it->second, it->first);
         }
+        parentObj.server->encodedFrames.erase(it);
+        delete it->second;
+        it->second = NULL;
+        
         EvaluationTCP stat = *(parentObj.server->evaluationTCPStats.begin());
         char buffertemp[64];
         sprintf(buffertemp, "%lu", stat.messageID);
         parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+        
+        sprintf(buffertemp, "%lu", it->first);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffertemp));
+        
         sprintf(buffertemp, "%llu", stat.encodeStartTime);
         parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
         
