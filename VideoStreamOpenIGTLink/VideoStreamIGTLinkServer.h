@@ -201,7 +201,17 @@ public:
   EvaluationTool* evalTool;
   EvaluationTool* evalToolFrame;
   
-  std::map<igtlUint32, unsigned char*> encodedFrames;
+  class encodedFrame
+  {
+  public:
+    encodedFrame(){messageDataLength = 0;};
+    encodedFrame(encodedFrame const &anotherFrame){};
+    ~encodedFrame(){};
+    unsigned char messagePackPointer[RTP_PAYLOAD_LENGTH*(16384-2)];  // we use 14 bits for fragment number, 2^14 = 16384. maximum
+    uint32_t messageDataLength;
+  };
+  
+  std::map<igtlUint32, encodedFrame*> encodedFrames;
   
   std::vector<EvaluationTCP> evaluationTCPStats;
   
