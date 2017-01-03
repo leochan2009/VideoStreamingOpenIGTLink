@@ -725,10 +725,11 @@ void VideoStreamIGTLinkServer::SendCompressedData()
       stat.messageID = messageID;
       stat.encodeStartTime = this->encodeStartTime;
       stat.encodeEndTime = this->encodeEndTime;
-      unsigned char * message = new unsigned char[videoMsg->GetBufferSize()];
-      memcpy(message, videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
+      encodedFrame* frame = new encodedFrame();
+      memcpy(frame->messagePackPointer, videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
+      frame->messageDataLength = videoMsg->GetBufferSize();
       this->glock->Lock();
-      this->encodedFrames.insert(std::pair<igtlUint32, unsigned char*>(videoMsg->GetBufferSize(), message));
+      this->encodedFrames.insert(std::pair<igtlUint32, VideoStreamIGTLinkServer::encodedFrame*>(messageID, frame));
       this->evaluationTCPStats.push_back(stat);
       this->glock->Unlock();
     }
@@ -766,10 +767,11 @@ void VideoStreamIGTLinkServer::SendCompressedData()
             memcpy((unsigned char *)videoMsg->GetPackFragmentPointer(2), &pLayerBsInfo->pBsBuf[iLayerSize], nalLength);
             
             videoMsg->Pack();
-            unsigned char * message = new unsigned char[videoMsg->GetBufferSize()];
-            memcpy(message, videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
+            encodedFrame* frame = new encodedFrame();
+            memcpy(frame->messagePackPointer, videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
+            frame->messageDataLength = videoMsg->GetBufferSize();
             this->glock->Lock();
-            this->encodedFrames.insert(std::pair<igtlUint32, unsigned char*>(videoMsg->GetBufferSize(), message));
+            this->encodedFrames.insert(std::pair<igtlUint32, encodedFrame*>(nalID, frame));
             EvaluationUDP stat;
             stat.nalID = nalID;
             stat.frameNum = frameNum;
@@ -809,8 +811,8 @@ void* ThreadFunctionSendPacket(void* ptr)
       std::cerr<<parentObj.server->encodedFrames.size()<<std::endl;
       if (parentObj.server->transportMethod == VideoStreamIGTLinkServer::TransportMethod::UseUDP)
       {
-        std::map<igtlUint32, unsigned char*>::iterator it = parentObj.server->encodedFrames.begin();
-        parentObj.server->rtpWrapper->WrapMessageAndSend(parentObj.server->serverUDPSocket, it->second, it->first);
+        std::map<igtlUint32, VideoStreamIGTLinkServer::encodedFrame*>::iterator it = parentObj.server->encodedFrames.begin();
+        parentObj.server->rtpWrapper->WrapMessageAndSend(parentObj.server->serverUDPSocket, it->second->messagePackPointer, it->second->messageDataLength);
         parentObj.server->encodedFrames.erase(it);
         delete it->second;
         it->second = NULL;
@@ -882,7 +884,7 @@ void* ThreadFunctionSendPacket(void* ptr)
       }
       else if(parentObj.server->transportMethod == VideoStreamIGTLinkServer::TransportMethod::UseTCP)
       {
-        std::map<igtlUint32, unsigned char*>::iterator it = parentObj.server->encodedFrames.begin();
+        std::map<igtlUint32, VideoStreamIGTLinkServer::encodedFrame*>::iterator it = parentObj.server->encodedFrames.begin();
         if(parentObj.server->socket)
         {
           parentObj.server->socket->Send(it->second, it->first);
