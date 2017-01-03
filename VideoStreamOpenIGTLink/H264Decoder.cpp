@@ -255,11 +255,6 @@ int H264Decode::DecodeSingleNal (ISVCDecoder* pDecoder, unsigned char* kpH264Bit
     iBufPos += iSliceSize;
     ++ iSliceIndex;
   }
-  if (iFrameCount)
-  {
-    return 2;
-  }
-  return 1;
   // coverity scan uninitial
 label_exit:
   if (pBuf) {
@@ -274,4 +269,9 @@ label_exit:
     fclose (pOptionFile);
     pOptionFile = NULL;
   }
+  if (iFrameCount)
+  {
+    return 2;
+  }
+  return 1;
 }
