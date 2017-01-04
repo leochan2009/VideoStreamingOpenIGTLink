@@ -81,6 +81,11 @@ public:
   bool InitializeEncoderAndServer();
   
   /**
+   Start the sending packet thread
+   */
+  int StartSendPacketThread();
+  
+  /**
    Set the input frame pointer , the encoder will read the frame from the pointer
    */
   void SetInputFramePointer(uint8_t* picPointer);

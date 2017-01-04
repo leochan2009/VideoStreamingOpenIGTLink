@@ -274,7 +274,7 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
     if (this->clientIPAddress && this->clientPortNumber)
     {
       this->serverUDPSocket->AddClient(this->clientIPAddress, this->clientPortNumber, 0);
-      this->interval = 100;
+      this->interval = 10000;
     }
     else
     {
@@ -586,8 +586,147 @@ INSIDE_MEM_FREE:
   return false;
 }
 
+struct serverPointer
+{
+  VideoStreamIGTLinkServer* server;
+};
+
+void* ThreadFunctionSendPacket(void* ptr)
+{
+  // Get thread information
+  igtl::MultiThreader::ThreadInfo* info =
+  static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
+  serverPointer parentObj = *(static_cast<serverPointer*>(info->UserData));
+  while(1)
+  {
+    parentObj.server->glock->Lock();
+    if(parentObj.server->encodedFrames.size()>0)
+    {
+      if (parentObj.server->transportMethod == VideoStreamIGTLinkServer::TransportMethod::UseUDP)
+      {
+        std::map<igtlUint32, VideoStreamIGTLinkServer::encodedFrame*>::iterator it = parentObj.server->encodedFrames.begin();
+        parentObj.server->rtpWrapper->WrapMessageAndSend(parentObj.server->serverUDPSocket, it->second->messagePackPointer, it->second->messageDataLength);
+        parentObj.server->encodedFrames.erase(it);
+        delete it->second;
+        it->second = NULL;
+        EvaluationUDP stat = *(parentObj.server->evaluationUDPStats.begin());
+        char buffer[64];
+        sprintf(buffer, "%lu", stat.frameNum);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        sprintf(buffer, "%lu", stat.nalID);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        int framePacketSize = 0;
+        for(int i = 0;i < parentObj.server->rtpWrapper->PacketTotalLengthList.size();i++)
+        {
+          framePacketSize += parentObj.server->rtpWrapper->PacketTotalLengthList[i];
+        }
+        sprintf(buffer, "%lu", framePacketSize);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        
+        sprintf(buffer, "%llu", stat.encodeStartTime);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        
+        sprintf(buffer, "%llu", stat.encodeEndTime);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        
+        sprintf(buffer, "%lu", parentObj.server->rtpWrapper->PacketBeforeSendTimeStampList[0]);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        
+        sprintf(buffer, "%lu", parentObj.server->rtpWrapper->PacketSendTimeStampList[parentObj.server->rtpWrapper->PacketSendTimeStampList.size()-1]);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        
+        parentObj.server->evalToolFrame->WriteCurrentLineToFile();
+        for (int i = 0; i< parentObj.server->rtpWrapper->fragmentNumberList.size(); i++)
+        {
+          char buffertemp[64];
+          
+          sprintf(buffertemp, "%lu", stat.frameNum);
+          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          sprintf(buffertemp, "%lu", stat.nalID);
+          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          sprintf(buffertemp, "%lu", parentObj.server->rtpWrapper->PacketTotalLengthList[i]);
+          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          if (parentObj.server->rtpWrapper->fragmentNumberList[i] == 0XFFFF)
+          {
+            sprintf(buffertemp, "%i", -1);
+          }
+          else
+          {
+            sprintf(buffertemp, "%lu", parentObj.server->rtpWrapper->fragmentNumberList[i]);
+          }
+          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          sprintf(buffertemp, "%llu", stat.encodeStartTime);
+          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          sprintf(buffertemp, "%llu", stat.encodeEndTime);
+          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          sprintf(buffertemp, "%llu", parentObj.server->rtpWrapper->PacketBeforeSendTimeStampList[i]);
+          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          sprintf(buffertemp, "%llu", parentObj.server->rtpWrapper->PacketSendTimeStampList[i]);
+          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+          
+          parentObj.server->evalTool->WriteCurrentLineToFile();
+        }
+        parentObj.server->evaluationUDPStats.erase(parentObj.server->evaluationUDPStats.begin());
+      }
+      else if(parentObj.server->transportMethod == VideoStreamIGTLinkServer::TransportMethod::UseTCP)
+      {
+        std::map<igtlUint32, VideoStreamIGTLinkServer::encodedFrame*>::iterator it = parentObj.server->encodedFrames.begin();
+        if(parentObj.server->socket)
+        {
+          parentObj.server->socket->Send(it->second, it->second->messageDataLength);
+        }
+        parentObj.server->encodedFrames.erase(it);
+        delete it->second;
+        it->second = NULL;
+        
+        EvaluationTCP stat = *(parentObj.server->evaluationTCPStats.begin());
+        char buffertemp[64];
+        sprintf(buffertemp, "%lu", stat.messageID);
+        parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+        
+        sprintf(buffertemp, "%lu", it->first);
+        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffertemp));
+        
+        sprintf(buffertemp, "%llu", stat.encodeStartTime);
+        parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+        
+        sprintf(buffertemp, "%llu", stat.encodeEndTime);
+        parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+        
+        parentObj.server->ServerTimer->GetTime();
+        sprintf(buffertemp, "%llu", parentObj.server->ServerTimer->GetTimeStampInNanoseconds());
+        parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
+        parentObj.server->evalTool->WriteCurrentLineToFile();
+        parentObj.server->evaluationTCPStats.erase(parentObj.server->evaluationTCPStats.begin());
+      }
+    }
+    parentObj.server->glock->Unlock();
+  }
+}
+
+int VideoStreamIGTLinkServer::StartSendPacketThread()
+{
+  serverPointer ptr;
+  ptr.server = this;
+  igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
+  int threadID = threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionSendPacket, &ptr);
+  return threadID;
+}
+
 void VideoStreamIGTLinkServer::SendOriginalData()
 {
+  serverPointer ptr;
+  ptr.server = this;
+  igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
+  threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionSendPacket, &ptr);
+  
   if(this->useCompress == 0)
   {
     int kiPicResSize = pSrcPic->iPicWidth*pSrcPic->iPicHeight*3>>1;
@@ -616,7 +755,7 @@ void VideoStreamIGTLinkServer::SendOriginalData()
         videoMsg->SetWidth(pSrcPic->iPicWidth);
         videoMsg->SetHeight(pSrcPic->iPicHeight);
         videoMsg->SetMessageID(messageID);
-        videoMsg->m_Frame= pSrcPic->pData[0];
+        memcpy(videoMsg->m_Frame, pSrcPic->pData[0], frameSize);
         ServerTimer->GetTime();
         videoMsg->SetTimeStamp(ServerTimer);
         videoMsg->Pack();
@@ -626,56 +765,39 @@ void VideoStreamIGTLinkServer::SendOriginalData()
           sprintf(buffer, "%lu", messageID);
           evalToolFrame->AddAnElementToLine(std::string(buffer));
           // to do uncompressed data using UDP
+          encodedFrame* frame = new encodedFrame();
+          memcpy(frame->messagePackPointer, videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
+          frame->messageDataLength = videoMsg->GetBufferSize();
           this->glock->Lock();
-          if(this->socket)
-          {
-            rtpWrapper->WrapMessageAndSend(this->serverUDPSocket, (igtlUint8 *)videoMsg->GetPackPointer(), videoMsg->GetPackSize());
-          }
+          this->encodedFrames.insert(std::pair<igtlUint32, encodedFrame*>(messageID, frame));
+          EvaluationUDP stat;
+          stat.nalID = messageID;
+          stat.frameNum = messageID;
+          stat.encodeStartTime = -1;
+          stat.encodeEndTime = -1;
+          this->evaluationUDPStats.push_back(stat);
           this->glock->Unlock();
-          
-          sprintf(buffer, "%lu", rtpWrapper->PacketSendTimeStampList[rtpWrapper->PacketSendTimeStampList.size()-1]);
-          evalToolFrame->AddAnElementToLine(std::string(buffer));
-          evalToolFrame->WriteCurrentLineToFile();
-          for (int i = 0; i< rtpWrapper->fragmentNumberList.size(); i++)
-          {
-            char buffertemp[64];
-            sprintf(buffertemp, "%lu", messageID);
-            evalTool->AddAnElementToLine(std::string(buffertemp));
-            
-            sprintf(buffertemp, "%lu", rtpWrapper->PacketTotalLengthList[i]);
-            evalTool->AddAnElementToLine(std::string(buffertemp));
-            
-            sprintf(buffertemp, "%lu", rtpWrapper->fragmentNumberList[i]);
-            evalTool->AddAnElementToLine(std::string(buffertemp));
-            
-            sprintf(buffertemp, "%llu", rtpWrapper->PacketSendTimeStampList[i]);
-            evalTool->AddAnElementToLine(std::string(buffertemp));
-            
-            evalTool->WriteCurrentLineToFile();
-          }
         }
         else if(this->transportMethod == UseTCP)
         {
+          EvaluationTCP stat;
+          stat.messageID = messageID;
+          stat.encodeStartTime = -1;
+          stat.encodeEndTime = -1;
+          encodedFrame* frame = new encodedFrame();
+          memcpy(frame->messagePackPointer, videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
+          frame->messageDataLength = videoMsg->GetBufferSize();
           this->glock->Lock();
-          if(this->socket)
-          {
-            this->socket->Send(videoMsg->GetPackPointer(), videoMsg->GetPackSize());
-          }
+          this->encodedFrames.insert(std::pair<igtlUint32, VideoStreamIGTLinkServer::encodedFrame*>(messageID, frame));
+          this->evaluationTCPStats.push_back(stat);
           this->glock->Unlock();
-          char buffertemp[64];
-          sprintf(buffertemp, "%lu", messageID);
-          evalTool->AddAnElementToLine(std::string(buffertemp));
-          
-          ServerTimer->GetTime();
-          sprintf(buffertemp, "%llu", ServerTimer->GetTimeStampInNanoseconds());
-          evalTool->AddAnElementToLine(std::string(buffertemp));
-          evalTool->WriteCurrentLineToFile();
         }
       }
     }
     delete[] pYUV;
     pYUV = NULL;
   }
+  igtl::Sleep(this->interval);
 }
 
 void VideoStreamIGTLinkServer::SendCompressedData()
@@ -792,131 +914,6 @@ void VideoStreamIGTLinkServer::SendCompressedData()
   igtl::Sleep(this->interval);
 }
 
-struct serverPointer
-{
-  VideoStreamIGTLinkServer* server;
-};
-
-void* ThreadFunctionSendPacket(void* ptr)
-{
-  // Get thread information
-  igtl::MultiThreader::ThreadInfo* info =
-  static_cast<igtl::MultiThreader::ThreadInfo*>(ptr);
-  serverPointer parentObj = *(static_cast<serverPointer*>(info->UserData));
-  while(1)
-  {
-    parentObj.server->glock->Lock();
-    if(parentObj.server->encodedFrames.size()>0)
-    {
-      std::cerr<<parentObj.server->encodedFrames.size()<<std::endl;
-      if (parentObj.server->transportMethod == VideoStreamIGTLinkServer::TransportMethod::UseUDP)
-      {
-        std::map<igtlUint32, VideoStreamIGTLinkServer::encodedFrame*>::iterator it = parentObj.server->encodedFrames.begin();
-        parentObj.server->rtpWrapper->WrapMessageAndSend(parentObj.server->serverUDPSocket, it->second->messagePackPointer, it->second->messageDataLength);
-        parentObj.server->encodedFrames.erase(it);
-        delete it->second;
-        it->second = NULL;
-        EvaluationUDP stat = *(parentObj.server->evaluationUDPStats.begin());
-        char buffer[64];
-        sprintf(buffer, "%lu", stat.frameNum);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
-        sprintf(buffer, "%lu", stat.nalID);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
-        int framePacketSize = 0;
-        for(int i = 0;i < parentObj.server->rtpWrapper->PacketTotalLengthList.size();i++)
-        {
-          framePacketSize += parentObj.server->rtpWrapper->PacketTotalLengthList[i];
-        }
-        sprintf(buffer, "%lu", framePacketSize);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
-        
-        sprintf(buffer, "%llu", stat.encodeStartTime);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
-        
-        sprintf(buffer, "%llu", stat.encodeEndTime);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
-        
-        sprintf(buffer, "%lu", parentObj.server->rtpWrapper->PacketBeforeSendTimeStampList[0]);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
-        
-        sprintf(buffer, "%lu", parentObj.server->rtpWrapper->PacketSendTimeStampList[parentObj.server->rtpWrapper->PacketSendTimeStampList.size()-1]);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
-        
-        parentObj.server->evalToolFrame->WriteCurrentLineToFile();
-        for (int i = 0; i< parentObj.server->rtpWrapper->fragmentNumberList.size(); i++)
-        {
-          char buffertemp[64];
-          
-          sprintf(buffertemp, "%lu", stat.frameNum);
-          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-          
-          sprintf(buffertemp, "%lu", stat.nalID);
-          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-          
-          sprintf(buffertemp, "%lu", parentObj.server->rtpWrapper->PacketTotalLengthList[i]);
-          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-          
-          if (parentObj.server->rtpWrapper->fragmentNumberList[i] == 0XFFFF)
-          {
-            sprintf(buffertemp, "%i", -1);
-          }
-          else
-          {
-            sprintf(buffertemp, "%lu", parentObj.server->rtpWrapper->fragmentNumberList[i]);
-          }
-          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-          
-          sprintf(buffertemp, "%llu", stat.encodeStartTime);
-          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-          
-          sprintf(buffertemp, "%llu", stat.encodeEndTime);
-          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-          
-          sprintf(buffertemp, "%llu", parentObj.server->rtpWrapper->PacketBeforeSendTimeStampList[i]);
-          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-          
-          sprintf(buffertemp, "%llu", parentObj.server->rtpWrapper->PacketSendTimeStampList[i]);
-          parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-          
-          parentObj.server->evalTool->WriteCurrentLineToFile();
-        }
-        parentObj.server->evaluationUDPStats.erase(parentObj.server->evaluationUDPStats.begin());
-      }
-      else if(parentObj.server->transportMethod == VideoStreamIGTLinkServer::TransportMethod::UseTCP)
-      {
-        std::map<igtlUint32, VideoStreamIGTLinkServer::encodedFrame*>::iterator it = parentObj.server->encodedFrames.begin();
-        if(parentObj.server->socket)
-        {
-          parentObj.server->socket->Send(it->second, it->first);
-        }
-        parentObj.server->encodedFrames.erase(it);
-        delete it->second;
-        it->second = NULL;
-        
-        EvaluationTCP stat = *(parentObj.server->evaluationTCPStats.begin());
-        char buffertemp[64];
-        sprintf(buffertemp, "%lu", stat.messageID);
-        parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-        
-        sprintf(buffertemp, "%lu", it->first);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffertemp));
-        
-        sprintf(buffertemp, "%llu", stat.encodeStartTime);
-        parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-        
-        sprintf(buffertemp, "%llu", stat.encodeEndTime);
-        parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-        
-        parentObj.server->ServerTimer->GetTime();
-        sprintf(buffertemp, "%llu", parentObj.server->ServerTimer->GetTimeStampInNanoseconds());
-        parentObj.server->evalTool->AddAnElementToLine(std::string(buffertemp));
-        parentObj.server->evalTool->WriteCurrentLineToFile();
-        parentObj.server->evaluationTCPStats.erase(parentObj.server->evaluationTCPStats.begin());
-      }
-    }
-    parentObj.server->glock->Unlock();
-  }
-}
 
 void* VideoStreamIGTLinkServer::EncodeFile(void)
 {
@@ -924,11 +921,6 @@ void* VideoStreamIGTLinkServer::EncodeFile(void)
   {
     this->InitializeEncoderAndServer();
   }
-  serverPointer ptr;
-  ptr.server = this;
-  igtl::MultiThreader::Pointer threader = igtl::MultiThreader::New();
-  threader->SpawnThread((igtl::ThreadFunctionType)&ThreadFunctionSendPacket, &ptr);
-  
   int64_t iStart = 0, iTotal = 0;
   int32_t iActualFrameEncodedCount = 0;
   int32_t iFrameIdx = 0;

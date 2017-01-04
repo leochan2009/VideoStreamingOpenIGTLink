@@ -37,6 +37,7 @@ int main (int argc, char** argv)
   {
     server.StartUDPServer();
   }
+  server.StartSendPacketThread();
   while(1)
   {
     if(server.transportMethod==server.UseTCP)
