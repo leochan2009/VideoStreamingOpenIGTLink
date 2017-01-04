@@ -179,6 +179,8 @@ public:
   
   bool  useCompress;
   
+  int   netWorkBandWidth; // in KB/s
+  
   char  codecName[IGTL_VIDEO_CODEC_NAME_SIZE];
   
   int   serverConnected;

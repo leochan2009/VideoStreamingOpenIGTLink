@@ -63,6 +63,7 @@ VideoStreamIGTLinkServer::VideoStreamIGTLinkServer(char *argv[])
   this->encodedFrames.clear();
   this->evaluationTCPStats.clear();
   this->evaluationUDPStats.clear();
+  this->netWorkBandWidth = 10000; // in KB/s
 }
 
 int VideoStreamIGTLinkServer::StartTCPServer ()
@@ -263,6 +264,13 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
         this->useCompress = atoi(strTag[1].c_str());
         arttributNum ++;
       }
+      if (strTag[0].compare ("NetWorkBandWidth") == 0)
+      {
+        this->netWorkBandWidth = atoi(strTag[1].c_str());
+        int time = floor(RTP_PAYLOAD_LENGTH/netWorkBandWidth+1.0);
+        this->rtpWrapper->packetIntervalTime = time; // in millisecond
+        arttributNum ++;
+      }
     }
     if (arttributNum ==20) // only parse the first 20 arttribute
     {
@@ -274,7 +282,7 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
     if (this->clientIPAddress && this->clientPortNumber)
     {
       this->serverUDPSocket->AddClient(this->clientIPAddress, this->clientPortNumber, 0);
-      this->interval = 10000;
+      this->interval = 50;
     }
     else
     {
@@ -768,13 +776,13 @@ void VideoStreamIGTLinkServer::SendOriginalData()
           encodedFrame* frame = new encodedFrame();
           memcpy(frame->messagePackPointer, videoMsg->GetPackPointer(), videoMsg->GetBufferSize());
           frame->messageDataLength = videoMsg->GetBufferSize();
-          this->glock->Lock();
-          this->encodedFrames.insert(std::pair<igtlUint32, encodedFrame*>(messageID, frame));
           EvaluationUDP stat;
           stat.nalID = messageID;
           stat.frameNum = messageID;
           stat.encodeStartTime = -1;
           stat.encodeEndTime = -1;
+          this->glock->Lock();
+          this->encodedFrames.insert(std::pair<igtlUint32, encodedFrame*>(messageID, frame));
           this->evaluationUDPStats.push_back(stat);
           this->glock->Unlock();
         }
@@ -792,12 +800,12 @@ void VideoStreamIGTLinkServer::SendOriginalData()
           this->evaluationTCPStats.push_back(stat);
           this->glock->Unlock();
         }
+        igtl::Sleep(this->interval);
       }
     }
     delete[] pYUV;
     pYUV = NULL;
   }
-  igtl::Sleep(this->interval);
 }
 
 void VideoStreamIGTLinkServer::SendCompressedData()
