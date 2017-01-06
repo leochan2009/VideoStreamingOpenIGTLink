@@ -43,18 +43,11 @@
 #include "welsencUtil.h"
 #include "../EvaluationTool.h"
 
-struct EvaluationTCP {
+struct Evaluation{
   igtlUint32 messageID;
   igtlUint64 encodeStartTime;
   igtlUint64 encodeEndTime;
   
-};
-
-struct EvaluationUDP {
-  igtlUint32 nalID;
-  igtlUint32 frameNum;
-  igtlUint64 encodeStartTime;
-  igtlUint64 encodeEndTime;
 };
 
 class ISVCEncoder;
@@ -179,7 +172,7 @@ public:
   
   bool  useCompress;
   
-  int   netWorkBandWidth; // in KB/s
+  int   netWorkBandWidth; // in kbps
   
   char  codecName[IGTL_VIDEO_CODEC_NAME_SIZE];
   
@@ -220,8 +213,12 @@ public:
   
   std::map<igtlUint32, encodedFrame*> encodedFrames;
   
-  std::vector<EvaluationTCP> evaluationTCPStats;
+  std::vector<Evaluation> evaluationStats;
   
-  std::vector<EvaluationUDP> evaluationUDPStats;
+private:
+  void CheckEncodedFrameMap();
   
+  int iTotalFrameToEncode;
+  
+  unsigned long totalCompressedDataSize;
 };
