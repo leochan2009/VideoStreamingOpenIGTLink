@@ -157,7 +157,7 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
   char buffertemp[64];
   sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampInNanoseconds());
   this->evalToolDecodeThread->filename = std::string(fileName).append("DecodeThread-").append(buffertemp);
-  std::string headLine = "FrameNum NAL-Unit Before-Decoding After-Decoding";
+  std::string headLine = "FrameNum Before-Decoding After-Decoding";
   this->evalToolDecodeThread->AddAnElementToLine(headLine);
   this->evalToolDecodeThread->WriteCurrentLineToFile();
   int r = socket->ConnectToServer(TCPServerIPAddress, TCPServerPort);
@@ -241,8 +241,6 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
       ReceiverTimerDecodeThread->GetTime();
       static int frameNum = 0;
       char buffertemp[64];
-      sprintf(buffertemp, "%lu", frameNum);
-      evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
       sprintf(buffertemp, "%lu", videoMsg->GetMessageID());
       evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
       sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampInNanoseconds());
@@ -267,7 +265,6 @@ int VideoStreamIGTLinkReceiver::RunOnTCPSocket()
         evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
         frameNum ++;
       }
-      
       evalToolDecodeThread->WriteCurrentLineToFile(); // this is actually the decode time of a single NAL unit
     }
     else
@@ -310,10 +307,10 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
   sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampInNanoseconds());
   this->evalToolDecodeThread->filename = std::string(fileName).append("DecodeThread-").append(buffertemp);
   this->evalToolPacketThread->filename = std::string(fileName).append("PacketThread-").append(buffertemp);
-  std::string headLine = "FrameNum NAL-Unit Before-Decoding After-Decoding";
+  std::string headLine = "FrameNum Before-Decoding After-Decoding";
   this->evalToolDecodeThread->AddAnElementToLine(headLine);
   this->evalToolDecodeThread->WriteCurrentLineToFile();
-  headLine = "NAL-Unit Fragment-Number Fragment-Packet-ReceivingTime";
+  headLine = "FrameNum Fragment-Number Fragment-Packet-ReceivingTime";
   this->evalToolPacketThread->AddAnElementToLine(headLine);
   this->evalToolPacketThread->WriteCurrentLineToFile();
   //----------------------------
@@ -381,23 +378,9 @@ int VideoStreamIGTLinkReceiver::RunOnUDPSocket()
         {
           break;
         }
-        else if(status == 1)
-        {
-          sprintf(buffertemp, "%lu", frameNum);
-          evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
-          sprintf(buffertemp, "%lu", videoMultiPKTMSG->GetMessageID());
-          evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
-          sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampInNanoseconds());
-          evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
-          ReceiverTimerDecodeThread->GetTime();
-          sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampInNanoseconds());
-          evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
-        }
         else if(status == 2)
         {
-          sprintf(buffertemp, "%lu", frameNum);
           frameNum ++;
-          evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
           sprintf(buffertemp, "%lu", videoMultiPKTMSG->GetMessageID());
           evalToolDecodeThread->AddAnElementToLine(std::string(buffertemp));
           sprintf(buffertemp, "%llu", ReceiverTimerDecodeThread->GetTimeStampInNanoseconds());
