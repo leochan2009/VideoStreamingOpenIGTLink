@@ -74,11 +74,6 @@ public:
   bool InitializeEncoderAndServer();
   
   /**
-   Start the sending packet thread
-   */
-  int StartSendPacketThread();
-  
-  /**
    Set the input frame pointer , the encoder will read the frame from the pointer
    */
   void SetInputFramePointer(uint8_t* picPointer);
@@ -211,14 +206,22 @@ public:
     uint32_t messageDataLength;
   };
   
+  std::map<igtlUint32, uint8_t*> incommingFrames;
+  
   std::map<igtlUint32, encodedFrame*> encodedFrames;
   
   std::vector<Evaluation> evaluationStats;
   
+  int iTotalFrameToEncode;
+  
+  int StartSendPacketThread();
+  
+  int StartReadFrameThread(int frameRate);
+  
 private:
   void CheckEncodedFrameMap();
   
-  int iTotalFrameToEncode;
+  void ReadInFileWithFrameRate(int rate);
   
   unsigned long totalCompressedDataSize;
 };

@@ -38,6 +38,7 @@ int main (int argc, char** argv)
     server.StartUDPServer();
   }
   server.StartSendPacketThread();
+  server.StartReadFrameThread(30);
   while(1)
   {
     if(server.transportMethod==server.UseTCP)
