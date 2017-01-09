@@ -160,13 +160,13 @@ int VideoStreamIGTLinkServer::StartUDPServer ()
       std::string headLineUDPFrame = "";
       if (useCompress == 0)
       {
-        headLine = "FrameNum Fragment-Number Sending-Packet";
-        headLineUDPFrame = "FrameNum NAL-Unit Sending-Packet";
+        headLine = "FrameNum Packet-Size Fragment-Number Sending-Packet-Pre Sending-Packet-Post";
+        headLineUDPFrame = "FrameNum Frame-Size Before-Sending-Packet After-Sending-Packet";;
       }
       else
       {
         headLine = "FrameNum Packet-Size Fragment-Number Before-Encoding After-Encoding Sending-Packet-Pre Sending-Packet-Post";
-        headLineUDPFrame = "FrameNum Packet-Size Before-Encoding After-Encoding Sending-Packet-Pre Sending-Packet-Pre";
+        headLineUDPFrame = "FrameNum Frame-Size Before-Encoding After-Encoding Sending-Packet-Pre Sending-Packet-Pre";
       }
       
       this->evalTool->AddAnElementToLine(headLine);
@@ -268,8 +268,9 @@ int VideoStreamIGTLinkServer::ParseConfigForServer()
       if (strTag[0].compare ("NetWorkBandWidth") == 0)
       {
         this->netWorkBandWidth = atoi(strTag[1].c_str());
-        int time = floor(8*RTP_PAYLOAD_LENGTH/netWorkBandWidth+1.0);
-        this->rtpWrapper->packetIntervalTime = time; // in millisecond
+        int netWorkBandWidthInBPS = netWorkBandWidth * 1000; //networkBandwidth is in kbps
+        int time = floor(8*RTP_PAYLOAD_LENGTH*1e9/netWorkBandWidthInBPS+ 1.0); // the needed time in nanosecond to send a RTP payload.
+        this->rtpWrapper->packetIntervalTime = time; // in nanoSecond
         arttributNum ++;
       }
     }
@@ -637,12 +638,14 @@ void* ThreadFunctionSendPacket(void* ptr)
         }
         sprintf(buffer, "%lu", framePacketSize);
         parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
-        
-        sprintf(buffer, "%llu", stat.encodeStartTime);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
-        
-        sprintf(buffer, "%llu", stat.encodeEndTime);
-        parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        if(parentObj.server->useCompress)
+        {
+          sprintf(buffer, "%llu", stat.encodeStartTime);
+          parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+          
+          sprintf(buffer, "%llu", stat.encodeEndTime);
+          parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
+        }
         
         sprintf(buffer, "%lu", parentObj.server->rtpWrapper->PacketBeforeSendTimeStampList[0]);
         parentObj.server->evalToolFrame->AddAnElementToLine(std::string(buffer));
